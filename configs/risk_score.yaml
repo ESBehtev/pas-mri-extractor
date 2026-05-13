@@ -1,0 +1,115 @@
+scoring:
+
+  invasion_type:
+    percreta: 5
+    increta: 3
+    accreta: 1
+    none: 0
+
+  invasion_confidence:
+    definite: 2
+    probable: 1
+    possible: 1
+    absent: 0
+    unclear: 0
+
+  features:
+
+    bladder_involvement:
+      present: 3
+      probable: 2
+      possible: 2
+
+    parametrium_involvement:
+      present: 3
+
+    uterine_wall_thinning:
+      present: 1
+
+    uterine_hernia_or_bulging:
+      present: 2
+
+    retroplacental_vessels:
+      present: 1
+
+    lacunae:
+      present: 1
+
+    placenta_previa:
+      present: 1
+
+    anterior_placenta:
+      present: 1
+
+    preoperative_bleeding:
+      present: 2
+
+  previous_cs_count:
+    min_count: 2
+    score: 1
+
+
+risk_groups:
+
+  low:
+    min: 0
+    max: 3
+
+  moderate:
+    min: 4
+    max: 9
+
+  high:
+    min: 10
+    max: 100
+
+
+hard_rules:
+
+  percreta_forces_high: true
+
+  increta_without_bladder:
+    force_moderate: true
+
+  bladder_plus_percreta:
+    force_high: true
+    force_red_flag: true
+
+  bladder_present:
+    force_red_flag: true
+
+
+risk_predictions:
+
+  low:
+    blood_loss_percent: 10
+    vascular_percent: 10
+    bladder_percent: 5
+    blood_loss_range: "500–1000 мл"
+
+  moderate:
+    blood_loss_percent: 35
+    vascular_percent: 25
+    bladder_percent: 15
+    blood_loss_range: "1000–1500 мл"
+
+  high:
+    blood_loss_percent: 70
+    vascular_percent: 50
+    bladder_percent: 30
+    blood_loss_range: "1500–2500 мл"
+
+
+readiness_levels:
+
+  low:
+    level: "1"
+    text: "Уровень 1: низкий риск, стандартная бригада, обычная подготовка."
+
+  moderate:
+    level: "2"
+    text: "Уровень 2: умеренный риск, усиленная подготовка, запас компонентов крови, сосудистый хирург по вызову."
+
+  high:
+    level: "3"
+    text: "Уровень 3: высокий риск, мультидисциплинарная команда, сосудистый хирург/уролог заранее, готовность к расширенной операции."

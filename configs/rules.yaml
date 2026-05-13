@@ -1,0 +1,118 @@
+version: "0.1"
+
+normalization:
+  lowercase: true
+  replace:
+    "ё": "е"
+
+default_features:
+  invasion_type: "none"
+  invasion_confidence: "absent"
+  bladder_involvement: "absent"
+  parametrium_involvement: "absent"
+  posterior_wall_involvement: "absent"
+  placenta_previa: "absent"
+  anterior_placenta: "absent"
+  retroplacental_vessels: "absent"
+  lacunae: "absent"
+  uterine_wall_thinning: "absent"
+  uterine_hernia_or_bulging: "absent"
+  preoperative_bleeding: "absent"
+  previous_cs_count: null
+  gestational_week: null
+  short_explanation: ""
+
+regex_features:
+
+  placenta_previa:
+    present: "предлеж|перекрывает\\s+внутренн\\w*\\s+зев|низк"
+
+  anterior_placenta:
+    present: "передн\\w*\\s+стенк"
+
+  retroplacental_vessels:
+    present: "ретроплацентарн|расширенн\\w*.*сосуд|полнокровн\\w*.*сосуд|сосудист"
+
+  lacunae:
+    present: "лакун"
+
+  uterine_wall_thinning:
+    present: "истонч\\w*.*миометр|истонч\\w*.*рубц|миометр\\w*.*не\\s+прослеж"
+
+  uterine_hernia_or_bulging:
+    present: "выбух|пролаб|грыж"
+
+  preoperative_bleeding:
+    present: "кровотеч"
+
+  bladder_involvement:
+    present: "вовлеч\\w*.*мочев|инвази\\w*.*мочев|прорастан\\w*.*мочев|деформац\\w*.*мочев|маточно-пузырн\\w*.*не\\s+(?:прослеж|дифференц)"
+    possible: "нельзя\\s+исключить.*мочев|возможно.*мочев|подозр\\w*.*мочев"
+
+  parametrium_involvement:
+    present: "параметр|параметральн"
+
+  posterior_wall_involvement:
+    present: "задн\\w*\\s+стенк\\w*\\s+матк|задн\\w*\\s+стенк\\w*\\s+мочев"
+
+regex_numeric:
+
+  gestational_week:
+    pattern: "(\\d+)\\s*недел"
+    group: 1
+    type: int
+
+  previous_cs_count:
+    pattern: "после\\s*(\\d+)\\s*(?:кс|кесар)"
+    group: 1
+    type: int
+
+invasion_type_rules:
+
+  percreta:
+    priority: 3
+    patterns:
+      - "\\bpercreta\\b"
+      - "вовлеч\\w*.*мочев|инвази\\w*.*мочев|прорастан\\w*.*мочев|деформац\\w*.*мочев|маточно-пузырн\\w*.*не\\s+(?:прослеж|дифференц)"
+      - "за\\s+предел\\w*.*матк"
+      - "параметр"
+
+  increta:
+    priority: 2
+    patterns:
+      - "\\bincreta\\b"
+      - "врастан\\w*.*миометр"
+      - "прорастан\\w*.*миометр"
+      - "миометр\\w*.*не\\s+прослеж"
+
+  accreta:
+    priority: 1
+    patterns:
+      - "\\baccreta\\b"
+      - "плотн\\w*.*прикреп"
+      - "поверхностн\\w*.*врастан"
+      - "врастан\\w*.*плацент"
+
+invasion_confidence_rules:
+  possible:
+    - "нельзя\\s+исключить"
+    - "возможно"
+    - "подозр"
+
+  probable:
+    - "вероят"
+    - "соответствует"
+
+  default_if_invasion_present: "definite"
+  default_if_no_invasion: "absent"
+
+short_explanation_templates:
+  invasion_type: "тип врастания: {value}"
+  placenta_previa: "предлежание плаценты"
+  anterior_placenta: "передняя локализация плаценты"
+  uterine_wall_thinning: "истончение миометрия/рубца"
+  lacunae: "плацентарные лакуны"
+  retroplacental_vessels: "расширенные/ретроплацентарные сосуды"
+  bladder_involvement: "мочевой пузырь: {value}"
+
+short_explanation_default: "Значимых признаков врастания по тексту не выделено."

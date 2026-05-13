@@ -1,0 +1,39 @@
+default_model: qwen_1_5b
+
+models:
+
+  qwen_1_5b:
+    model_id: Qwen/Qwen2.5-1.5B-Instruct
+
+    generation:
+      do_sample: false
+      repetition_penalty: 1.05
+      max_new_tokens: 512
+
+    tokenizer:
+      truncation: true
+      max_input_tokens: 4096
+
+    runtime:
+      device: auto
+      torch_dtype: auto
+
+
+  medgemma_4b:
+    model_id: google/medgemma-1.5-4b-it
+
+    generation:
+      temperature: 0.1
+      top_p: 0.95
+      do_sample: false
+      repetition_penalty: 1.05
+
+      max_new_tokens: 1024
+
+    tokenizer:
+      truncation: true
+      max_input_tokens: 4096
+
+    runtime:
+      device: auto
+      torch_dtype: auto
