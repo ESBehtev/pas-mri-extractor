@@ -9,20 +9,58 @@ from .models import LoadedModel, generate_text, load_llm
 from .prompts import build_prompt
 from .schemas import MRIExtractionResult
 
-def repair_common_model_errors(parsed: dict) -> dict:
-    features = parsed.get("features", {})
 
-    confidence_values = [
-        "possible",
-        "probable",
-        "definite",
-        "unclear",
-        "absent",
-    ]
+VALID_INVASION_TYPES = {
+    "none",
+    "accreta",
+    "increta",
+    "percreta",
+}
+
+CONFIDENCE_VALUES = {
+    "possible",
+    "probable",
+    "definite",
+    "unclear",
+    "absent",
+}
+
+
+def normalize_invasion_type(value: object) -> str:
+    if value is None:
+        return "none"
+
+    text = str(value).strip().lower()
+
+    if text in VALID_INVASION_TYPES:
+        return text
+
+    if "percreta" in text:
+        return "percreta"
+
+    if "increta" in text:
+        return "increta"
+
+    if "accreta" in text:
+        return "accreta"
+
+    return "none"
+
+
+def repair_common_model_errors(parsed: dict) -> dict:
+    """
+    Чинит частые ошибки LLM до Pydantic-валидации.
+
+    Поддерживает оба возможных формата:
+    1. старый плоский parsed["features"]
+    2. новый вложенный parsed["extracted_features"]["invasion"]
+    """
+
+    features = parsed.get("features", {})
 
     invasion_type = features.get("invasion_type")
 
-    if invasion_type in confidence_values:
+    if invasion_type in CONFIDENCE_VALUES:
         text_blob = " ".join(
             [
                 str(features),
@@ -42,7 +80,33 @@ def repair_common_model_errors(parsed: dict) -> dict:
         else:
             features["invasion_type"] = "none"
 
+    if "invasion_type" in features:
+        features["invasion_type"] = normalize_invasion_type(
+            features.get("invasion_type")
+        )
+
     parsed["features"] = features
+
+    extracted_features = parsed.get("extracted_features", {})
+    invasion = extracted_features.get("invasion", {})
+
+    if isinstance(invasion, dict):
+        invasion_type = invasion.get("type")
+        confidence = invasion.get("confidence")
+
+        if str(invasion_type).lower() in CONFIDENCE_VALUES:
+            invasion["confidence"] = str(invasion_type).lower()
+            invasion["type"] = "none"
+        else:
+            invasion["type"] = normalize_invasion_type(invasion_type)
+
+        if confidence is not None:
+            confidence_text = str(confidence).strip().lower()
+            if confidence_text not in CONFIDENCE_VALUES:
+                invasion["confidence"] = "unclear"
+
+        extracted_features["invasion"] = invasion
+        parsed["extracted_features"] = extracted_features
 
     return parsed
 
@@ -66,6 +130,7 @@ def trim_text_fields(parsed: dict, max_chars: int = 350) -> dict:
     parsed["features"] = features
 
     return parsed
+
 
 def rebuild_short_explanation(parsed: dict) -> dict:
     features = parsed.get("features", {})
@@ -115,6 +180,7 @@ def rebuild_short_explanation(parsed: dict) -> dict:
     parsed["features"] = features
 
     return parsed
+
 
 def postprocess_extraction(parsed: dict) -> dict:
     parsed = repair_common_model_errors(parsed)
