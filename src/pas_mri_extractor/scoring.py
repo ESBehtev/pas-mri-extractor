@@ -18,20 +18,31 @@ def normalize_mri_result(result: MRIExtractionResult | dict) -> FullMRIResult:
     else:
         result_dict = deepcopy(result)
 
-    features = result_dict.get("features", {})
+    case_info = result_dict.get("case_info", {})
+    extracted = result_dict.get("extracted_features", {})
 
-    invasion = features.get("invasion_type", "none")
-    confidence = features.get("invasion_confidence", "absent")
-    bladder = features.get("bladder_involvement", "absent")
-    parametrium = features.get("parametrium_involvement", "absent")
-    vessels = features.get("retroplacental_vessels", "absent")
-    lacunae = features.get("lacunae", "absent")
-    thinning = features.get("uterine_wall_thinning", "absent")
-    previa = features.get("placenta_previa", "absent")
-    anterior = features.get("anterior_placenta", "absent")
-    hernia = features.get("uterine_hernia_or_bulging", "absent")
-    bleeding = features.get("preoperative_bleeding", "absent")
-    prev_cs = features.get("previous_cs_count", None)
+    invasion_block = extracted.get("invasion", {})
+    anatomy = extracted.get("anatomy", {})
+    placenta_location = extracted.get("placenta_location", {})
+    mri_signs = extracted.get("mri_signs", {})
+    clinical_context = extracted.get("clinical_context", {})
+
+    invasion = invasion_block.get("type", "none")
+    confidence = invasion_block.get("confidence", "absent")
+
+    bladder = anatomy.get("bladder_involvement", "absent")
+    parametrium = anatomy.get("parametrium_involvement", "absent")
+
+    vessels = mri_signs.get("retroplacental_vessels", "absent")
+    lacunae = mri_signs.get("lacunae", "absent")
+    thinning = mri_signs.get("uterine_wall_thinning", "absent")
+    hernia = mri_signs.get("uterine_hernia_or_bulging", "absent")
+
+    previa = placenta_location.get("placenta_previa", "absent")
+    anterior = placenta_location.get("anterior_placenta", "absent")
+
+    bleeding = clinical_context.get("preoperative_bleeding", "absent")
+    prev_cs = case_info.get("previous_cs_count", None)
 
     clinical_score = 0
     reasons = []

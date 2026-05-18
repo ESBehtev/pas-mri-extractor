@@ -9,6 +9,120 @@ from .models import LoadedModel, generate_text, load_llm
 from .prompts import build_prompt
 from .schemas import MRIExtractionResult
 
+def repair_common_model_errors(parsed: dict) -> dict:
+    features = parsed.get("features", {})
+
+    confidence_values = [
+        "possible",
+        "probable",
+        "definite",
+        "unclear",
+        "absent",
+    ]
+
+    invasion_type = features.get("invasion_type")
+
+    if invasion_type in confidence_values:
+        text_blob = " ".join(
+            [
+                str(features),
+                str(parsed.get("clinical_summary", "")),
+                str(parsed.get("clinical_rationale", "")),
+            ]
+        ).lower()
+
+        features["invasion_confidence"] = invasion_type
+
+        if "percreta" in text_blob:
+            features["invasion_type"] = "percreta"
+        elif "increta" in text_blob:
+            features["invasion_type"] = "increta"
+        elif "accreta" in text_blob:
+            features["invasion_type"] = "accreta"
+        else:
+            features["invasion_type"] = "none"
+
+    parsed["features"] = features
+
+    return parsed
+
+
+def trim_text_fields(parsed: dict, max_chars: int = 350) -> dict:
+    for field in [
+        "clinical_summary",
+        "clinical_rationale",
+    ]:
+        value = parsed.get(field)
+
+        if isinstance(value, str) and len(value) > max_chars:
+            parsed[field] = value[:max_chars].rstrip() + "..."
+
+    features = parsed.get("features", {})
+    explanation = features.get("short_explanation")
+
+    if isinstance(explanation, str) and len(explanation) > max_chars:
+        features["short_explanation"] = explanation[:max_chars].rstrip() + "..."
+
+    parsed["features"] = features
+
+    return parsed
+
+def rebuild_short_explanation(parsed: dict) -> dict:
+    features = parsed.get("features", {})
+
+    found = []
+
+    invasion_type = features.get("invasion_type")
+    if invasion_type and invasion_type != "none":
+        found.append(f"тип врастания: {invasion_type}")
+
+    if features.get("invasion_confidence") not in [None, "absent"]:
+        found.append(f"уверенность: {features['invasion_confidence']}")
+
+    labels = {
+        "bladder_involvement": "возможное вовлечение мочевого пузыря",
+        "parametrium_involvement": "вовлечение параметрия",
+        "posterior_wall_involvement": "вовлечение задней стенки",
+        "placenta_previa": "предлежание плаценты",
+        "anterior_placenta": "плацента по передней стенке",
+        "retroplacental_vessels": "расширенные/ретроплацентарные сосуды",
+        "lacunae": "плацентарные лакуны",
+        "uterine_wall_thinning": "истончение миометрия/рубца",
+        "uterine_hernia_or_bulging": "выбухание/грыжевидная деформация",
+        "preoperative_bleeding": "кровотечение",
+    }
+
+    for key, label in labels.items():
+        value = features.get(key)
+
+        if value == "present":
+            found.append(label)
+        elif value in ["possible", "probable"]:
+            found.append(f"{label}: {value}")
+
+    if features.get("previous_cs_count") is not None:
+        found.append(f"КС: {features['previous_cs_count']}")
+
+    if features.get("gestational_week") is not None:
+        found.append(f"{features['gestational_week']} недель")
+
+    features["short_explanation"] = (
+        "; ".join(found)
+        if found
+        else "Значимых признаков врастания по тексту не выделено."
+    )
+
+    parsed["features"] = features
+
+    return parsed
+
+def postprocess_extraction(parsed: dict) -> dict:
+    parsed = repair_common_model_errors(parsed)
+    parsed = rebuild_short_explanation(parsed)
+    parsed = trim_text_fields(parsed)
+
+    return parsed
+
 
 def extract_mri_features(
     mri_text: str,
@@ -23,7 +137,9 @@ def extract_mri_features(
 
     prompt = build_prompt(mri_text)
     raw_output = generate_text(loaded_model, prompt)
+
     parsed = extract_json_object(raw_output)
+    parsed = postprocess_extraction(parsed)
 
     return MRIExtractionResult.model_validate(parsed)
 
@@ -41,7 +157,10 @@ def extract_mri_features_with_raw(
 
     prompt = build_prompt(mri_text)
     raw_output = generate_text(loaded_model, prompt)
+
     parsed = extract_json_object(raw_output)
+    parsed = postprocess_extraction(parsed)
+
     validated = MRIExtractionResult.model_validate(parsed)
 
     return {

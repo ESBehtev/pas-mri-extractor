@@ -25,6 +25,7 @@ class LoadedModel:
     tokenizer: Any
     model: Any
     generation_config: dict[str, Any]
+    tokenizer_config: dict[str, Any]
 
 
 def get_torch_device(device: str = "auto") -> str:
@@ -53,6 +54,30 @@ def get_torch_dtype(dtype: str = "auto") -> Any:
     return torch.float32
 
 
+def build_quantization_config(quantization_config: dict[str, Any]) -> Any | None:
+    if not quantization_config.get("load_in_4bit", False):
+        return None
+
+    from transformers import BitsAndBytesConfig
+
+    compute_dtype = get_torch_dtype(
+        quantization_config.get("bnb_4bit_compute_dtype", "float16")
+    )
+
+    return BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=compute_dtype,
+        bnb_4bit_use_double_quant=quantization_config.get(
+            "bnb_4bit_use_double_quant",
+            True,
+        ),
+        bnb_4bit_quant_type=quantization_config.get(
+            "bnb_4bit_quant_type",
+            "nf4",
+        ),
+    )
+
+
 def load_llm(model_name: str | None = None) -> LoadedModel:
     config = load_config("models.yaml")
 
@@ -63,10 +88,17 @@ def load_llm(model_name: str | None = None) -> LoadedModel:
 
     model_id = model_cfg["model_id"]
     generation_config = model_cfg.get("generation", {})
+    tokenizer_config = model_cfg.get("tokenizer", {})
     runtime_config = model_cfg.get("runtime", {})
+    quantization_config = model_cfg.get("quantization", {})
 
-    device = get_torch_device(runtime_config.get("device", "auto"))
-    torch_dtype = get_torch_dtype(runtime_config.get("torch_dtype", "auto"))
+    device = get_torch_device(
+        runtime_config.get("device", "auto")
+    )
+
+    dtype = get_torch_dtype(
+        runtime_config.get("dtype", "auto")
+    )
 
     hf_token = os.getenv("HF_TOKEN")
 
@@ -76,14 +108,30 @@ def load_llm(model_name: str | None = None) -> LoadedModel:
         trust_remote_code=True,
     )
 
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+
+    bnb_config = build_quantization_config(quantization_config)
+
+    model_kwargs = {
+        "token": hf_token,
+        "trust_remote_code": True,
+    }
+
+    if bnb_config is not None:
+        model_kwargs["quantization_config"] = bnb_config
+        model_kwargs["device_map"] = runtime_config.get("device_map", "auto")
+    else:
+        model_kwargs["dtype"] = dtype
+
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        token=hf_token,
-        torch_dtype=torch_dtype,
-        trust_remote_code=True,
+        **model_kwargs,
     )
 
-    model.to(device)
+    if bnb_config is None:
+        model.to(device)
+
     model.eval()
 
     return LoadedModel(
@@ -92,19 +140,53 @@ def load_llm(model_name: str | None = None) -> LoadedModel:
         tokenizer=tokenizer,
         model=model,
         generation_config=generation_config,
+        tokenizer_config=tokenizer_config,
+    )
+
+
+def format_prompt(loaded_model: LoadedModel, prompt: str) -> str:
+    tokenizer = loaded_model.tokenizer
+    tokenizer_config = loaded_model.tokenizer_config
+
+    use_chat_template = tokenizer_config.get("use_chat_template", True)
+
+    if not use_chat_template:
+        return prompt
+
+    if not hasattr(tokenizer, "apply_chat_template"):
+        return prompt
+
+    messages = [
+        {
+            "role": "user",
+            "content": prompt,
+        }
+    ]
+
+    return tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
     )
 
 
 def generate_text(loaded_model: LoadedModel, prompt: str) -> str:
     tokenizer = loaded_model.tokenizer
     model = loaded_model.model
+    tokenizer_config = loaded_model.tokenizer_config
 
     device = next(model.parameters()).device
 
-    inputs = tokenizer(
+    formatted_prompt = format_prompt(
+        loaded_model,
         prompt,
+    )
+
+    inputs = tokenizer(
+        formatted_prompt,
         return_tensors="pt",
-        truncation=True,
+        truncation=tokenizer_config.get("truncation", True),
+        max_length=tokenizer_config.get("max_input_tokens", None),
     ).to(device)
 
     with torch.no_grad():
@@ -112,11 +194,12 @@ def generate_text(loaded_model: LoadedModel, prompt: str) -> str:
             **inputs,
             **loaded_model.generation_config,
             eos_token_id=tokenizer.eos_token_id,
-            pad_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
         )
+
     generated_ids = output_ids[0][inputs["input_ids"].shape[-1]:]
 
     return tokenizer.decode(
         generated_ids,
-        skip_special_tokens=True,
+        skip_special_tokens=tokenizer_config.get("skip_special_tokens", True),
     ).strip()

@@ -1,86 +1,80 @@
 template: |
   Ты медицинский NLP-экстрактор.
 
-  Извлеки признаки из МРТ при подозрении на врастание плаценты.
+  Извлеки структурированные признаки из МРТ при подозрении на врастание плаценты.
 
   Ответь ТОЛЬКО одним JSON-объектом.
-  Не пиши Python.
-  Не пиши код.
   Не пиши markdown.
-  Не пиши рассуждения.
-  Не пиши текст до или после JSON.
+  Не пиши объяснения вне JSON.
+  Не добавляй текст до или после JSON.
 
-  JSON должен содержать:
-  - features
-  - clinical_summary
-  - clinical_rationale
+  JSON должен иметь строго такую структуру:
 
-  В features должны быть поля:
-  invasion_type, invasion_confidence, bladder_involvement, parametrium_involvement,
-  posterior_wall_involvement, placenta_previa, anterior_placenta,
-  retroplacental_vessels, lacunae, uterine_wall_thinning,
-  uterine_hernia_or_bulging, preoperative_bleeding,
-  previous_cs_count, gestational_week, short_explanation.
+  {{
+    "case_info": {{
+      "gestational_week": null,
+      "previous_cs_count": null
+    }},
+    "extracted_features": {{
+      "invasion": {{
+        "type": "none",
+        "confidence": "absent"
+      }},
+      "anatomy": {{
+        "bladder_involvement": "absent",
+        "parametrium_involvement": "absent",
+        "posterior_wall_involvement": "absent"
+      }},
+      "placenta_location": {{
+        "placenta_previa": "absent",
+        "anterior_placenta": "absent"
+      }},
+      "mri_signs": {{
+        "retroplacental_vessels": "absent",
+        "lacunae": "absent",
+        "uterine_wall_thinning": "absent",
+        "uterine_hernia_or_bulging": "absent"
+      }},
+      "clinical_context": {{
+        "preoperative_bleeding": "absent"
+      }}
+    }},
+    "evidence": {{
+      "positive_findings": [],
+      "uncertain_findings": [],
+      "negative_findings": []
+    }}
+  }}
 
   Допустимые значения:
-  - invasion_type: "none", "accreta", "increta", "percreta"
-  - invasion_confidence: "absent", "possible", "probable", "definite", "unclear"
+  - extracted_features.invasion.type: "none", "accreta", "increta", "percreta"
+  - extracted_features.invasion.confidence: "absent", "possible", "probable", "definite", "unclear"
   - остальные признаки: "absent", "possible", "probable", "present"
-  - previous_cs_count: число или null
   - gestational_week: число или null
+  - previous_cs_count: число или null
+  - evidence.*: списки коротких фраз из исходного текста
 
-  Обязательные правила:
+  Правила:
   - Не выдумывай признаки.
-  - Не перефразируй свободно исходный текст.
-  - Для short_explanation, clinical_summary и clinical_rationale используй только признаки, явно найденные в тексте.
-  - clinical_summary НЕ должен быть пустым.
-  - clinical_rationale НЕ должен быть пустым.
-  - Если данных мало, всё равно заполни clinical_summary короткой фразой по найденным признакам.
-  - Если признаков врастания нет, напиши: "Явных признаков врастания плаценты по тексту не выявлено."
-
-  Правила уверенности:
+  - Если признак не указан в тексте, ставь "absent".
   - "нельзя исключить", "возможно", "подозрение" → "possible".
   - "вероятно", "соответствует" → "probable".
-  - если признак явно есть → "present".
-  - если признака нет в тексте → "absent".
+  - Если признак явно описан, ставь "present".
+  - Если есть "после 2 кесаревых сечений", previous_cs_count = 2.
+  - Если есть "32 недели", gestational_week = 32.
 
-  previous_cs_count:
-  - извлекай количество кесаревых сечений.
-  - "после 2 кесаревых сечений" → 2.
-  - "после двух кесаревых сечений" → 2.
-  - "2 КС" → 2.
-  - если количество не указано → null.
+  invasion.type:
+  - "percreta": выход за пределы матки, параметрий, мочевой пузырь, маточно-пузырное пространство не прослеживается/не дифференцируется.
+  - "increta": врастание/прорастание в миометрий, миометрий не прослеживается, выраженное истончение миометрия с нарушением границы.
+  - "accreta": плотное прикрепление или поверхностное врастание без глубокой инвазии.
+  - "none": если данных за врастание нет.
 
-  gestational_week:
-  - извлекай срок беременности в неделях.
-  - "32 недели" → 32.
-  - "срок 32 нед" → 32.
-  - если срок не указан → null.
-
-  invasion_type:
-  - percreta: если есть percreta, вовлечение мочевого пузыря, маточно-пузырное пространство не прослеживается/не дифференцируется, выход за пределы матки или параметрий.
-  - increta: если есть increta, врастание/прорастание в миометрий, миометрий не прослеживается, резкое истончение миометрия с нарушением границы.
-  - accreta: если есть accreta, плотное прикрепление, поверхностное врастание, врастание без глубины.
-  - none: если данных за врастание нет или признаков недостаточно.
-
-  Отдельные признаки:
-  - bladder_involvement = present: вовлечение/инвазия мочевого пузыря, деформация стенки мочевого пузыря, маточно-пузырное пространство не прослеживается/не дифференцируется.
-  - bladder_involvement = possible: нельзя исключить вовлечение мочевого пузыря, возможно вовлечение мочевого пузыря, подозрение на вовлечение мочевого пузыря.
-  - placenta_previa = present: предлежание, перекрывает внутренний зев, низкое расположение.
-  - anterior_placenta = present: плацента по передней стенке.
-  - retroplacental_vessels = present: ретроплацентарные, расширенные, полнокровные сосуды, сосудистый рисунок.
-  - lacunae = present: лакуны.
-  - uterine_wall_thinning = present: истончение миометрия/рубца, миометрий не прослеживается.
-  - uterine_hernia_or_bulging = present: выбухание, пролабирование, грыжевидная деформация стенки матки.
-  - preoperative_bleeding = present: кровотечение.
-
-  clinical_summary: 1 короткое предложение.
-  clinical_rationale: 1-2 коротких предложения, только по признакам из текста.
-  short_explanation: короткий список найденных признаков через точку с запятой.
+  evidence:
+  - positive_findings: найденные положительные признаки.
+  - uncertain_findings: признаки с формулировками "нельзя исключить", "возможно", "подозрение".
+  - negative_findings: только явно отрицательные признаки, если они есть в тексте.
 
   МРТ-текст:
   """
   {mri_text}
   """
-
-  JSON:

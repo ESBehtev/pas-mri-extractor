@@ -1,4 +1,4 @@
-default_model: qwen_1_5b
+default_model: qwen_7b
 
 models:
 
@@ -13,27 +13,52 @@ models:
     tokenizer:
       truncation: true
       max_input_tokens: 4096
+      use_chat_template: true
+      skip_special_tokens: true
 
     runtime:
       device: auto
-      torch_dtype: auto
+      dtype: auto
 
-
-  medgemma_4b:
-    model_id: google/medgemma-1.5-4b-it
+  qwen_7b:
+    model_id: Qwen/Qwen2.5-7B-Instruct
 
     generation:
-      temperature: 0.1
-      top_p: 0.95
       do_sample: false
       repetition_penalty: 1.05
-
-      max_new_tokens: 1024
+      max_new_tokens: 768
 
     tokenizer:
       truncation: true
-      max_input_tokens: 4096
+      max_input_tokens: 8192
+      use_chat_template: true
+      skip_special_tokens: true
 
     runtime:
       device: auto
-      torch_dtype: auto
+      dtype: auto
+
+  medgemma_1_5_4b:
+    model_id: google/medgemma-1.5-4b-it
+
+    generation:
+      do_sample: false
+      repetition_penalty: 1.05
+      max_new_tokens: 1200
+
+    tokenizer:
+      truncation: true
+      max_input_tokens: 3500
+      use_chat_template: false
+      skip_special_tokens: false
+
+    runtime:
+      device: auto
+      dtype: auto
+      device_map: auto
+
+    quantization:
+      load_in_4bit: true
+      bnb_4bit_compute_dtype: float16
+      bnb_4bit_use_double_quant: true
+      bnb_4bit_quant_type: nf4

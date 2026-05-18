@@ -1,6 +1,5 @@
-from .schemas import MRIExtractionResult, MRIFeatures
+from .schemas import MRIExtractionResult
 
 __all__ = [
     "MRIExtractionResult",
-    "MRIFeatures",
 ]

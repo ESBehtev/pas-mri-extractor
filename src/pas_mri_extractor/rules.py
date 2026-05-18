@@ -1,8 +1,8 @@
 """
 Rule-based fallback для извлечения признаков.
 
-Используется как простой baseline или запасной вариант,
-если LLM не вернула валидный JSON.
+Используется как простой baseline или источник простых фактических признаков
+для hybrid merge с LLM-результатом.
 """
 
 import re
@@ -26,7 +26,11 @@ def normalize_text(text: str, config: dict[str, Any]) -> str:
     return text
 
 
-def extract_numeric_features(text: str, config: dict[str, Any], features: dict[str, Any]) -> None:
+def extract_numeric_features(
+    text: str,
+    config: dict[str, Any],
+    features: dict[str, Any],
+) -> None:
     for feature_name, rule in config.get("regex_numeric", {}).items():
         match = re.search(rule["pattern"], text)
 
@@ -41,7 +45,11 @@ def extract_numeric_features(text: str, config: dict[str, Any], features: dict[s
         features[feature_name] = value
 
 
-def extract_regex_features(text: str, config: dict[str, Any], features: dict[str, Any]) -> None:
+def extract_regex_features(
+    text: str,
+    config: dict[str, Any],
+    features: dict[str, Any],
+) -> None:
     for feature_name, status_rules in config.get("regex_features", {}).items():
         for status, pattern in status_rules.items():
             if re.search(pattern, text):
@@ -49,7 +57,11 @@ def extract_regex_features(text: str, config: dict[str, Any], features: dict[str
                 break
 
 
-def extract_invasion_type(text: str, config: dict[str, Any], features: dict[str, Any]) -> None:
+def extract_invasion_type(
+    text: str,
+    config: dict[str, Any],
+    features: dict[str, Any],
+) -> None:
     matched_type = "none"
     matched_priority = 0
 
@@ -64,11 +76,18 @@ def extract_invasion_type(text: str, config: dict[str, Any], features: dict[str,
     features["invasion_type"] = matched_type
 
 
-def extract_invasion_confidence(text: str, config: dict[str, Any], features: dict[str, Any]) -> None:
+def extract_invasion_confidence(
+    text: str,
+    config: dict[str, Any],
+    features: dict[str, Any],
+) -> None:
     confidence_rules = config.get("invasion_confidence_rules", {})
 
     if features.get("invasion_type") == "none":
-        features["invasion_confidence"] = confidence_rules.get("default_if_no_invasion", "absent")
+        features["invasion_confidence"] = confidence_rules.get(
+            "default_if_no_invasion",
+            "absent",
+        )
         return
 
     for confidence in ["possible", "probable"]:
@@ -77,40 +96,119 @@ def extract_invasion_confidence(text: str, config: dict[str, Any], features: dic
                 features["invasion_confidence"] = confidence
                 return
 
-    features["invasion_confidence"] = confidence_rules.get("default_if_invasion_present", "definite")
-
-
-def build_short_explanation(config: dict[str, Any], features: dict[str, Any]) -> str:
-    templates = config.get("short_explanation_templates", {})
-    found = []
-
-    if features.get("invasion_type") != "none":
-        template = templates.get("invasion_type")
-        if template:
-            found.append(template.format(value=features["invasion_type"]))
-
-    for feature_name in [
-        "placenta_previa",
-        "anterior_placenta",
-        "uterine_wall_thinning",
-        "lacunae",
-        "retroplacental_vessels",
-    ]:
-        if features.get(feature_name) == "present" and feature_name in templates:
-            found.append(templates[feature_name])
-
-    if features.get("bladder_involvement") in ["possible", "present"]:
-        template = templates.get("bladder_involvement")
-        if template:
-            found.append(template.format(value=features["bladder_involvement"]))
-
-    return "; ".join(found) if found else config.get(
-        "short_explanation_default",
-        "Значимых признаков врастания по тексту не выделено.",
+    features["invasion_confidence"] = confidence_rules.get(
+        "default_if_invasion_present",
+        "definite",
     )
 
 
-def rule_extract_features(mri_text: str, rules_config_name: str = "rules.yaml") -> MRIExtractionResult:
+def build_evidence(features: dict[str, Any]) -> dict[str, list[str]]:
+    positive = []
+    uncertain = []
+    negative = []
+
+    positive_labels = {
+        "placenta_previa": "предлежание/перекрытие внутреннего зева",
+        "anterior_placenta": "плацента по передней стенке",
+        "retroplacental_vessels": "расширенные/ретроплацентарные сосуды",
+        "lacunae": "плацентарные лакуны",
+        "uterine_wall_thinning": "истончение миометрия/рубца",
+        "uterine_hernia_or_bulging": "выбухание/грыжевидная деформация",
+        "preoperative_bleeding": "кровотечение",
+        "parametrium_involvement": "вовлечение параметрия",
+        "posterior_wall_involvement": "вовлечение задней стенки",
+    }
+
+    if features.get("invasion_type") != "none":
+        positive.append(f"тип врастания: {features['invasion_type']}")
+
+    for key, label in positive_labels.items():
+        value = features.get(key)
+
+        if value == "present":
+            positive.append(label)
+        elif value in ["possible", "probable"]:
+            uncertain.append(label)
+
+    bladder = features.get("bladder_involvement")
+
+    if bladder == "present":
+        positive.append("вовлечение мочевого пузыря")
+    elif bladder in ["possible", "probable"]:
+        uncertain.append("возможное вовлечение мочевого пузыря")
+
+    return {
+        "positive_findings": positive,
+        "uncertain_findings": uncertain,
+        "negative_findings": negative,
+    }
+
+
+def old_features_to_new_result(features: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "case_info": {
+            "gestational_week": features.get("gestational_week"),
+            "previous_cs_count": features.get("previous_cs_count"),
+        },
+        "extracted_features": {
+            "invasion": {
+                "type": features.get("invasion_type", "none"),
+                "confidence": features.get("invasion_confidence", "absent"),
+            },
+            "anatomy": {
+                "bladder_involvement": features.get(
+                    "bladder_involvement",
+                    "absent",
+                ),
+                "parametrium_involvement": features.get(
+                    "parametrium_involvement",
+                    "absent",
+                ),
+                "posterior_wall_involvement": features.get(
+                    "posterior_wall_involvement",
+                    "absent",
+                ),
+            },
+            "placenta_location": {
+                "placenta_previa": features.get(
+                    "placenta_previa",
+                    "absent",
+                ),
+                "anterior_placenta": features.get(
+                    "anterior_placenta",
+                    "absent",
+                ),
+            },
+            "mri_signs": {
+                "retroplacental_vessels": features.get(
+                    "retroplacental_vessels",
+                    "absent",
+                ),
+                "lacunae": features.get("lacunae", "absent"),
+                "uterine_wall_thinning": features.get(
+                    "uterine_wall_thinning",
+                    "absent",
+                ),
+                "uterine_hernia_or_bulging": features.get(
+                    "uterine_hernia_or_bulging",
+                    "absent",
+                ),
+            },
+            "clinical_context": {
+                "preoperative_bleeding": features.get(
+                    "preoperative_bleeding",
+                    "absent",
+                ),
+            },
+        },
+        "evidence": build_evidence(features),
+    }
+
+
+def rule_extract_features(
+    mri_text: str,
+    rules_config_name: str = "rules.yaml",
+) -> MRIExtractionResult:
     config = load_config(rules_config_name)
     text = normalize_text(mri_text, config)
 
@@ -121,12 +219,6 @@ def rule_extract_features(mri_text: str, rules_config_name: str = "rules.yaml") 
     extract_invasion_type(text, config, features)
     extract_invasion_confidence(text, config, features)
 
-    features["short_explanation"] = build_short_explanation(config, features)
-
-    result = {
-        "features": features,
-        "clinical_summary": features["short_explanation"],
-        "clinical_rationale": "Результат получен rule-based методом по regex-правилам.",
-    }
+    result = old_features_to_new_result(features)
 
     return MRIExtractionResult.model_validate(result)
