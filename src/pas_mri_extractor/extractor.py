@@ -25,6 +25,26 @@ CONFIDENCE_VALUES = {
     "absent",
 }
 
+STATUS_VALUES = {
+    "absent",
+    "possible",
+    "probable",
+    "present",
+}
+
+STATUS_FIELDS = {
+    "bladder_involvement",
+    "parametrium_involvement",
+    "posterior_wall_involvement",
+    "placenta_previa",
+    "anterior_placenta",
+    "retroplacental_vessels",
+    "lacunae",
+    "uterine_wall_thinning",
+    "uterine_hernia_or_bulging",
+    "preoperative_bleeding",
+}
+
 
 def normalize_invasion_type(value: object) -> str:
     if value is None:
@@ -47,20 +67,116 @@ def normalize_invasion_type(value: object) -> str:
     return "none"
 
 
+def normalize_confidence(value: object) -> str:
+    if value is None:
+        return "unclear"
+
+    text = str(value).strip().lower()
+
+    if text in CONFIDENCE_VALUES:
+        return text
+
+    if any(marker in text for marker in ["definite", "confirmed", "convincing", "достовер"]):
+        return "definite"
+
+    if any(marker in text for marker in ["probable", "likely", "вероят"]):
+        return "probable"
+
+    if any(
+        marker in text
+        for marker in [
+            "possible",
+            "cannot exclude",
+            "can't exclude",
+            "not excluded",
+            "не исключ",
+            "возмож",
+        ]
+    ):
+        return "possible"
+
+    if any(marker in text for marker in ["absent", "no ", "нет", "не выяв"]):
+        return "absent"
+
+    return "unclear"
+
+
+def normalize_status(value: object) -> str:
+    if value is None:
+        return "absent"
+
+    text = str(value).strip().lower()
+
+    if text in STATUS_VALUES:
+        return text
+
+    if any(
+        marker in text
+        for marker in [
+            "cannot exclude",
+            "can't exclude",
+            "not excluded",
+            "не исключ",
+            "possible",
+            "possibly",
+            "возмож",
+            "под вопросом",
+        ]
+    ):
+        return "possible"
+
+    if any(marker in text for marker in ["probable", "likely", "вероят"]):
+        return "probable"
+
+    if any(
+        marker in text
+        for marker in [
+            "present",
+            "detected",
+            "visualized",
+            "identified",
+            "выяв",
+            "определ",
+            "визуализ",
+            "имеется",
+            "есть",
+        ]
+    ):
+        return "present"
+
+    if any(
+        marker in text
+        for marker in [
+            "absent",
+            "not present",
+            "no convincing",
+            "no definite",
+            "no signs",
+            "не выяв",
+            "нет",
+            "без убедительных",
+            "без достоверных",
+        ]
+    ):
+        return "absent"
+
+    return "absent"
+
+
 def repair_common_model_errors(parsed: dict) -> dict:
     """
     Чинит частые ошибки LLM до Pydantic-валидации.
 
     Поддерживает оба возможных формата:
     1. старый плоский parsed["features"]
-    2. новый вложенный parsed["extracted_features"]["invasion"]
+    2. новый вложенный parsed["extracted_features"]
     """
 
     features = parsed.get("features", {})
 
     invasion_type = features.get("invasion_type")
 
-    if invasion_type in CONFIDENCE_VALUES:
+    if str(invasion_type).lower() in CONFIDENCE_VALUES:
         text_blob = " ".join(
             [
                 str(features),
@@ -69,7 +185,7 @@ def repair_common_model_errors(parsed: dict) -> dict:
             ]
         ).lower()
 
-        features["invasion_confidence"] = invasion_type
+        features["invasion_confidence"] = str(invasion_type).lower()
 
         if "percreta" in text_blob:
             features["invasion_type"] = "percreta"
@@ -85,28 +201,79 @@ def repair_common_model_errors(parsed: dict) -> dict:
             features.get("invasion_type")
         )
 
+    if "invasion_confidence" in features:
+        features["invasion_confidence"] = normalize_confidence(
+            features.get("invasion_confidence")
+        )
+
+    for field in STATUS_FIELDS:
+        if field in features:
+            features[field] = normalize_status(features.get(field))
+
     parsed["features"] = features
 
     extracted_features = parsed.get("extracted_features", {})
-    invasion = extracted_features.get("invasion", {})
 
+    invasion = extracted_features.get("invasion", {})
     if isinstance(invasion, dict):
         invasion_type = invasion.get("type")
-        confidence = invasion.get("confidence")
 
-        if str(invasion_type).lower() in CONFIDENCE_VALUES:
-            invasion["confidence"] = str(invasion_type).lower()
+        if str(invasion_type).strip().lower() in CONFIDENCE_VALUES:
+            invasion["confidence"] = normalize_confidence(invasion_type)
             invasion["type"] = "none"
         else:
             invasion["type"] = normalize_invasion_type(invasion_type)
 
-        if confidence is not None:
-            confidence_text = str(confidence).strip().lower()
-            if confidence_text not in CONFIDENCE_VALUES:
-                invasion["confidence"] = "unclear"
+        invasion["confidence"] = normalize_confidence(
+            invasion.get("confidence")
+        )
 
         extracted_features["invasion"] = invasion
-        parsed["extracted_features"] = extracted_features
+
+    anatomy = extracted_features.get("anatomy", {})
+    if isinstance(anatomy, dict):
+        for field in [
+            "bladder_involvement",
+            "parametrium_involvement",
+            "posterior_wall_involvement",
+        ]:
+            if field in anatomy:
+                anatomy[field] = normalize_status(anatomy.get(field))
+        extracted_features["anatomy"] = anatomy
+
+    placenta_location = extracted_features.get("placenta_location", {})
+    if isinstance(placenta_location, dict):
+        for field in [
+            "placenta_previa",
+            "anterior_placenta",
+        ]:
+            if field in placenta_location:
+                placenta_location[field] = normalize_status(
+                    placenta_location.get(field)
+                )
+        extracted_features["placenta_location"] = placenta_location
+
+    mri_signs = extracted_features.get("mri_signs", {})
+    if isinstance(mri_signs, dict):
+        for field in [
+            "retroplacental_vessels",
+            "lacunae",
+            "uterine_wall_thinning",
+            "uterine_hernia_or_bulging",
+        ]:
+            if field in mri_signs:
+                mri_signs[field] = normalize_status(mri_signs.get(field))
+        extracted_features["mri_signs"] = mri_signs
+
+    clinical_context = extracted_features.get("clinical_context", {})
+    if isinstance(clinical_context, dict):
+        if "preoperative_bleeding" in clinical_context:
+            clinical_context["preoperative_bleeding"] = normalize_status(
+                clinical_context.get("preoperative_bleeding")
+            )
+        extracted_features["clinical_context"] = clinical_context
+
+    parsed["extracted_features"] = extracted_features
 
     return parsed
 
