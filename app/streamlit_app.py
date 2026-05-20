@@ -6,6 +6,7 @@ from components import (
     render_json_export,
     render_report_sections,
 )
+from config_studio import render_config_studio
 from examples import get_example_by_name, get_example_names
 from state import (
     clear_extraction_request,
@@ -34,6 +35,14 @@ st.caption("Структурированное извлечение призна
 
 
 with st.sidebar:
+    st.header("Навигация")
+    app_mode = st.radio(
+        "Режим",
+        ["Извлечение", "Конфигурация"],
+        key="app_mode",
+    )
+
+    st.markdown("---")
     st.header("Статус")
 
     if st.session_state.get("model_loaded"):
@@ -46,6 +55,11 @@ with st.sidebar:
         "Исследовательский прототип. "
         "Не предназначен для самостоятельного клинического применения."
     )
+
+
+if app_mode == "Конфигурация":
+    render_config_studio()
+    st.stop()
 
 
 result, dual_result, sections, last_diagnostic_mode = get_last_outputs()

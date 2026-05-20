@@ -210,6 +210,9 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Project runtime config overrides
+runtime_configs/
+
 # PyPI configuration file
 .pypirc
 
