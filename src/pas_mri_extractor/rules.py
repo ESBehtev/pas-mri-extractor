@@ -19,6 +19,7 @@ NEGATION_PATTERNS = [
     r"\bне\s+выяв\w*",
     r"\bне\s+определя\w*",
     r"\bне\s+получен\w*",
+    r"\bне\s+подтвержд\w*",
     r"\bбез\s+признак\w*",
     r"\bбез\s+убедительн\w*",
     r"\bбез\s+достоверн\w*",
@@ -146,9 +147,30 @@ def add_negative_evidence(features: dict[str, Any], feature_name: str) -> None:
     if not label:
         return
 
-    negative_findings = features.setdefault("_negative_findings", [])
-    if label not in negative_findings:
-        negative_findings.append(label)
+    add_evidence(features, "_negative_findings", label)
+
+
+def clean_source_evidence(text: str) -> str:
+    return " ".join(text.strip().split())
+
+
+def add_evidence(features: dict[str, Any], bucket: str, text: str) -> None:
+    evidence = clean_source_evidence(text)
+    if not evidence:
+        return
+
+    findings = features.setdefault(bucket, [])
+    if evidence not in findings:
+        findings.append(evidence)
+
+
+def add_match_evidence(
+    features: dict[str, Any],
+    bucket: str,
+    text: str,
+    match: re.Match,
+) -> None:
+    add_evidence(features, bucket, get_scoped_match_context(text, match))
 
 
 def parse_previous_cs_count(text: str) -> int | None:
@@ -201,7 +223,7 @@ def extract_regex_features(
                 if is_negated_match(text, match):
                     negated_matches.append(match)
                 elif status == "present" and is_uncertain_context(
-                    get_match_context(text, match)
+                    get_scoped_match_context(text, match)
                 ):
                     uncertain_matches.append(match)
                 else:
@@ -209,14 +231,25 @@ def extract_regex_features(
 
             if negated_matches and not positive_matches:
                 add_negative_evidence(features, feature_name)
+                for match in negated_matches:
+                    add_match_evidence(features, "_negative_findings", text, match)
                 continue
 
             if uncertain_matches and not positive_matches:
                 features[feature_name] = "possible"
+                for match in uncertain_matches:
+                    add_match_evidence(features, "_uncertain_findings", text, match)
                 break
 
             if positive_matches:
                 features[feature_name] = status
+                evidence_bucket = (
+                    "_positive_findings"
+                    if status == "present"
+                    else "_uncertain_findings"
+                )
+                for match in positive_matches:
+                    add_match_evidence(features, evidence_bucket, text, match)
                 break
 
 
@@ -227,6 +260,7 @@ def extract_invasion_type(
 ) -> None:
     matched_type = "none"
     matched_priority = 0
+    matched_evidence: list[str] = []
 
     for invasion_type, rule in config.get("invasion_type_rules", {}).items():
         priority = rule.get("priority", 0)
@@ -242,13 +276,23 @@ def extract_invasion_type(
 
             if negated_matches and not positive_matches:
                 add_negative_evidence(features, "invasion_type")
+                for match in negated_matches:
+                    add_match_evidence(features, "_negative_findings", text, match)
                 continue
 
             if positive_matches and priority > matched_priority:
                 matched_type = invasion_type
                 matched_priority = priority
+                matched_evidence = [
+                    get_scoped_match_context(text, match)
+                    for match in positive_matches
+                ]
 
     features["invasion_type"] = matched_type
+
+    if matched_type != "none":
+        for evidence in matched_evidence:
+            add_evidence(features, "_positive_findings", evidence)
 
 
 def extract_invasion_confidence(
@@ -278,8 +322,8 @@ def extract_invasion_confidence(
 
 
 def build_evidence(features: dict[str, Any]) -> dict[str, list[str]]:
-    positive = []
-    uncertain = []
+    positive = list(features.get("_positive_findings", []))
+    uncertain = list(features.get("_uncertain_findings", []))
     negative = list(features.get("_negative_findings", []))
 
     positive_labels = {

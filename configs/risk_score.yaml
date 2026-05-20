@@ -2,8 +2,9 @@
 # src/pas_mri_extractor/scoring.py reads base weights, thresholds,
 # base risk predictions, and readiness text from this file.
 # Python still owns red_flag rules, hard risk overrides, risk post-processing,
-# and caps until a later scoring refactor. runtime_configs/risk_score.local.yaml
-# is not applied to the pipeline yet.
+# and caps until a later scoring refactor; those rules are documented below
+# under hard_rules. runtime_configs/risk_score.local.yaml is ignored.
+# Streamlit Config Studio can apply an explicit in-memory session override only.
 
 scoring:
 

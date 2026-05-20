@@ -360,6 +360,8 @@ template: |
   - для uterine_wall_thinning
   - для uterine_hernia_or_bulging
   - для bladder_involvement / parametrium_involvement / posterior_wall_involvement
+  - если bladder_involvement = "present" и в тексте есть фраза вроде
+    "достоверной инвазии стенки мочевого пузыря", добавь эту source phrase в positive_findings
 
   Если в отчёте есть:
   "МР-картина соответствует placenta increta"
