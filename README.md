@@ -34,6 +34,9 @@ pas-mri-extractor/
 ├── examples/
 │   └── sample_mri.txt
 │
+├── app/
+│   └── streamlit_app.py
+│
 ├── notebooks/
 │   └── 01_example_runs.ipynb
 │
@@ -112,6 +115,14 @@ HF_TOKEN=your_huggingface_token
 ---
 
 # Запуск
+
+## Запуск Streamlit-интерфейса
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+---
 
 ## Запуск через LLM
 
