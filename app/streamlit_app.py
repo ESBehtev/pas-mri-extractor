@@ -196,13 +196,13 @@ with extract_tab:
 
     if result:
         st.markdown("---")
-        render_clinical_result(result)
+        render_clinical_result(result, st.session_state.get("report_text"))
 
         st.markdown("---")
         render_json_export(result)
     else:
         st.markdown("---")
-        render_clinical_result(result)
+        render_clinical_result(result, st.session_state.get("report_text"))
 
 with config_tab:
     render_config_studio()

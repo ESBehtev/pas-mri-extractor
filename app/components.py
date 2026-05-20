@@ -1,5 +1,6 @@
 import html
 import json
+import re
 from textwrap import dedent
 from typing import Any
 
@@ -54,6 +55,142 @@ def as_list(value: Any) -> list[str]:
         return [value.strip()] if value.strip() else []
 
     return [str(value)]
+
+
+def normalize_match_text(text: str) -> tuple[str, list[int]]:
+    normalized_chars = []
+    index_map = []
+    previous_was_space = False
+
+    for index, char in enumerate(text):
+        normalized_char = char.lower().replace("ё", "е")
+
+        if normalized_char.isspace():
+            if previous_was_space:
+                continue
+
+            normalized_chars.append(" ")
+            index_map.append(index)
+            previous_was_space = True
+            continue
+
+        normalized_chars.append(normalized_char)
+        index_map.append(index)
+        previous_was_space = False
+
+    return "".join(normalized_chars), index_map
+
+
+def find_exact_ranges(text: str, phrase: str) -> list[tuple[int, int]]:
+    return [
+        (match.start(), match.end())
+        for match in re.finditer(re.escape(phrase), text)
+    ]
+
+
+def find_normalized_ranges(text: str, phrase: str) -> list[tuple[int, int]]:
+    normalized_text, index_map = normalize_match_text(text)
+    normalized_phrase, phrase_map = normalize_match_text(phrase)
+
+    if not normalized_phrase or not phrase_map:
+        return []
+
+    ranges = []
+    start = 0
+
+    while True:
+        match_start = normalized_text.find(normalized_phrase, start)
+        if match_start == -1:
+            break
+
+        match_end = match_start + len(normalized_phrase) - 1
+        original_start = index_map[match_start]
+        original_end = index_map[match_end] + 1
+        ranges.append((original_start, original_end))
+        start = match_start + 1
+
+    return ranges
+
+
+def range_overlaps(
+    candidate: tuple[int, int],
+    selected_ranges: list[tuple[int, int, str]],
+) -> bool:
+    start, end = candidate
+    return any(
+        start < selected_end and end > selected_start
+        for selected_start, selected_end, _ in selected_ranges
+    )
+
+
+def build_evidence_highlights(
+    report_text: str,
+    evidence: dict,
+) -> tuple[str, dict[str, int], list[str]]:
+    evidence_items = []
+    colors = {
+        "positive": "#ea580c",
+        "uncertain": "#f59e0b",
+        "negative": "#16a34a",
+    }
+
+    for kind, key in [
+        ("positive", "positive_findings"),
+        ("uncertain", "uncertain_findings"),
+        ("negative", "negative_findings"),
+    ]:
+        for phrase in as_list(evidence.get(key)):
+            evidence_items.append(
+                {
+                    "kind": kind,
+                    "phrase": phrase,
+                    "color": colors[kind],
+                }
+            )
+
+    evidence_items.sort(key=lambda item: len(item["phrase"]), reverse=True)
+
+    selected_ranges: list[tuple[int, int, str]] = []
+    found_counts = {"positive": 0, "uncertain": 0, "negative": 0}
+    not_found = []
+
+    for item in evidence_items:
+        phrase = item["phrase"]
+        exact_ranges = find_exact_ranges(report_text, phrase)
+        ranges = exact_ranges or find_normalized_ranges(report_text, phrase)
+        selected_for_phrase = 0
+
+        for start, end in ranges:
+            if range_overlaps((start, end), selected_ranges):
+                continue
+
+            selected_ranges.append((start, end, item["color"]))
+            selected_for_phrase += 1
+
+        if selected_for_phrase:
+            found_counts[item["kind"]] += 1
+        else:
+            not_found.append(phrase)
+
+    selected_ranges.sort(key=lambda item: item[0])
+    highlighted_parts = []
+    cursor = 0
+
+    for start, end, color in selected_ranges:
+        highlighted_parts.append(html.escape(report_text[cursor:start]))
+        highlighted_parts.append(
+            (
+                f'<span style="background-color: {color}33; '
+                f'border-bottom: 2px solid {color}; '
+                f'padding: 1px 2px; border-radius: 3px;">'
+                f'{html.escape(report_text[start:end])}</span>'
+            )
+        )
+        cursor = end
+
+    highlighted_parts.append(html.escape(report_text[cursor:]))
+
+    return "".join(highlighted_parts), found_counts, not_found
 
 
 def colorize_risk(value: Any) -> str:
@@ -452,6 +589,51 @@ def render_dual_comparison(dual_result: dict | None) -> None:
         render_diagnostic_column("Заключение", items["Заключение"], field_stats)
 
 
+def render_evidence_highlighting(result: dict, report_text: str | None) -> None:
+    if not report_text:
+        return
+
+    evidence = result.get("evidence", {})
+    positive_findings = as_list(evidence.get("positive_findings"))
+    uncertain_findings = as_list(evidence.get("uncertain_findings"))
+    negative_findings = as_list(evidence.get("negative_findings"))
+
+    if not positive_findings and not uncertain_findings and not negative_findings:
+        with st.expander("Подсветка evidence в отчёте", expanded=False):
+            st.write("Evidence для подсветки нет.")
+        return
+
+    highlighted_text, found_counts, not_found = build_evidence_highlights(
+        report_text,
+        evidence,
+    )
+
+    with st.expander("Подсветка evidence в отчёте", expanded=False):
+        col_pos, col_unc, col_neg, col_missing = st.columns(4)
+        col_pos.metric("Найдено positive", found_counts["positive"])
+        col_unc.metric("Найдено uncertain", found_counts["uncertain"])
+        col_neg.metric("Найдено negative", found_counts["negative"])
+        col_missing.metric("Не найдено", len(not_found))
+
+        render_html(
+            f"""
+            <div style="
+                white-space: pre-wrap;
+                border: 1px solid #334155;
+                border-radius: 10px;
+                padding: 14px 16px;
+                line-height: 1.55;
+                margin-top: 12px;
+            ">{highlighted_text}</div>
+            """
+        )
+
+        if not_found:
+            st.markdown("**Не найдено в тексте:**")
+            for phrase in not_found:
+                st.write(f"- {phrase}")
+
+
 def render_summary_cards(result: dict) -> None:
     features = result.get("extracted_features", {})
     invasion = features.get("invasion", {})
@@ -493,7 +675,7 @@ def render_summary_cards(result: dict) -> None:
             )
 
 
-def render_clinical_result(result: dict | None) -> None:
+def render_clinical_result(result: dict | None, report_text: str | None = None) -> None:
     if not result:
         st.info("Вставьте отчёт и нажмите Extract.")
         return
@@ -620,6 +802,8 @@ def render_clinical_result(result: dict | None) -> None:
     with col_neg:
         st.markdown("#### Признаки против PAS")
         show_findings(negative_findings, "negative")
+
+    render_evidence_highlighting(result, report_text)
 
     st.subheader("Прогнозируемые риски")
     risk_col1, risk_col2, risk_col3, risk_col4 = st.columns(4)
