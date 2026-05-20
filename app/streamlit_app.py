@@ -26,6 +26,7 @@ st.set_page_config(
 
 
 init_session_state()
+set_running(False)
 
 st.title("PAS MRI Extractor")
 st.caption("Структурированное извлечение признаков из MRI-отчётов")
@@ -96,7 +97,6 @@ text = st.text_area(
 run = st.button(
     "Извлечь признаки",
     type="primary",
-    disabled=st.session_state["is_running"],
 )
 
 
@@ -141,20 +141,24 @@ if run:
         set_running(False)
 
 
+if sections:
+    with st.expander(
+        "Разбор структуры отчёта",
+        expanded=last_diagnostic_mode,
+    ):
+        render_report_sections(sections)
+
+
 if result:
     st.markdown("---")
     render_clinical_result(result)
 
     st.markdown("---")
-    st.subheader("Structured JSON")
     render_json_export(result)
 
     if last_diagnostic_mode:
         st.markdown("---")
         st.subheader("Diagnostics")
-        st.markdown("#### Разбор структуры отчёта")
-        render_report_sections(sections)
-
         st.markdown("#### Сравнение: полный отчёт / описание / заключение")
         render_dual_comparison(dual_result)
 else:

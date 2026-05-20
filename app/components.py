@@ -1,5 +1,6 @@
 import html
 import json
+from textwrap import dedent
 from typing import Any
 
 import streamlit as st
@@ -140,11 +141,15 @@ def colorize_readiness_level(value: Any) -> str:
     return "#9ca3af"
 
 
+def render_html(markup: str) -> None:
+    st.markdown(dedent(markup).strip(), unsafe_allow_html=True)
+
+
 def badge(label: str, value: Any, color: str) -> None:
     safe_label = html.escape(str(label))
     safe_value = html.escape(ru(value))
 
-    st.markdown(
+    render_html(
         f"""
         <div style="
             padding: 16px 18px;
@@ -173,14 +178,13 @@ def badge(label: str, value: Any, color: str) -> None:
             </div>
         </div>
         """,
-        unsafe_allow_html=True,
     )
 
 
 def finding_box(text: str, color: str) -> None:
     safe_text = html.escape(str(text))
 
-    st.markdown(
+    render_html(
         f"""
         <div style="
             padding: 12px 14px;
@@ -194,7 +198,6 @@ def finding_box(text: str, color: str) -> None:
             {safe_text}
         </div>
         """,
-        unsafe_allow_html=True,
     )
 
 
@@ -210,7 +213,8 @@ def feature_card(
         safe_label = html.escape(str(label))
         safe_value = html.escape(ru(value))
         row_html.append(
-            f"""
+            dedent(
+                f"""
             <div style="
                 display: flex;
                 justify-content: space-between;
@@ -228,9 +232,10 @@ def feature_card(
                 ">{safe_value}</span>
             </div>
             """
+            ).strip()
         )
 
-    st.markdown(
+    render_html(
         f"""
         <div style="
             border: 1px solid #334155;
@@ -246,7 +251,6 @@ def feature_card(
             {''.join(row_html)}
         </div>
         """,
-        unsafe_allow_html=True,
     )
 
 
@@ -269,7 +273,7 @@ def readiness_box(level: Any, text: str | None) -> None:
     safe_level = html.escape(ru(level))
     safe_text = html.escape(text or "Нет текстовой рекомендации")
 
-    st.markdown(
+    render_html(
         f"""
         <div style="
             padding: 16px 18px;
@@ -294,7 +298,6 @@ def readiness_box(level: Any, text: str | None) -> None:
             </div>
         </div>
         """,
-        unsafe_allow_html=True,
     )
 
 
@@ -315,6 +318,97 @@ def render_short_result(title: str, item: dict | None) -> None:
     st.write(f"**Score:** {ru(score.get('clinical_score'))}")
 
 
+DIAGNOSTIC_COMPARISON_FIELDS = [
+    ("Invasion type", ("extracted_features", "invasion", "type")),
+    ("Confidence", ("extracted_features", "invasion", "confidence")),
+    ("Risk group", ("score", "risk_group")),
+    ("Clinical score", ("score", "clinical_score")),
+]
+
+
+def get_nested_value(item: dict | None, path: tuple[str, ...]) -> Any:
+    current: Any = item or {}
+
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+
+    return current
+
+
+def diagnostic_value_color(value: Any, is_consistent: bool, is_different: bool) -> str:
+    if is_consistent:
+        return "#16a34a"
+
+    if not is_different:
+        return "#64748b"
+
+    value_text = str(value).lower()
+    if value_text in ["percreta", "high"] or value_text.isdigit():
+        return "#dc2626"
+
+    return "#f59e0b"
+
+
+def render_diagnostic_column(
+    title: str,
+    item: dict | None,
+    field_stats: dict[str, dict[str, Any]],
+) -> None:
+    safe_title = html.escape(title)
+    rows = []
+
+    for label, path in DIAGNOSTIC_COMPARISON_FIELDS:
+        value = get_nested_value(item, path)
+        value_key = str(value)
+        stats = field_stats[label]
+        is_consistent = len(stats["counts"]) == 1
+        is_different = stats["counts"].get(value_key, 0) == 1
+        color = diagnostic_value_color(value, is_consistent, is_different)
+
+        rows.append(
+            dedent(
+                f"""
+            <div style="
+                display: flex;
+                justify-content: space-between;
+                gap: 12px;
+                align-items: center;
+                border-top: 1px solid #334155;
+                padding: 9px 0;
+            ">
+                <span style="color: #cbd5e1;">{html.escape(label)}</span>
+                <span style="
+                    color: {color};
+                    font-weight: 800;
+                    text-align: right;
+                    white-space: nowrap;
+                ">{html.escape(ru(value))}</span>
+            </div>
+            """
+            ).strip()
+        )
+
+    render_html(
+        f"""
+        <div style="
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 14px 16px 10px 16px;
+            margin-bottom: 14px;
+        ">
+            <div style="
+                font-size: 15px;
+                font-weight: 800;
+                margin-bottom: 4px;
+            ">{safe_title}</div>
+            {''.join(rows)}
+        </div>
+        """
+    )
+
+
 def render_report_sections(sections: object | None) -> None:
     if sections and sections.has_conclusion:
         st.success("Заключение найдено")
@@ -333,20 +427,28 @@ def render_dual_comparison(dual_result: dict | None) -> None:
         st.write("Нет данных diagnostic extraction")
         return
 
-    full_result = dual_result.get("full")
-    body_result = dual_result.get("body")
-    conclusion_result = dual_result.get("conclusion")
+    items = {
+        "Полный отчёт": dual_result.get("full"),
+        "Описание": dual_result.get("body"),
+        "Заключение": dual_result.get("conclusion"),
+    }
+
+    field_stats = {}
+    for label, path in DIAGNOSTIC_COMPARISON_FIELDS:
+        values = [str(get_nested_value(item, path)) for item in items.values()]
+        counts = {value: values.count(value) for value in set(values)}
+        field_stats[label] = {"counts": counts}
 
     col_full, col_body, col_conclusion = st.columns(3)
 
     with col_full:
-        render_short_result("Полный отчёт", full_result)
+        render_diagnostic_column("Полный отчёт", items["Полный отчёт"], field_stats)
 
     with col_body:
-        render_short_result("Описание", body_result)
+        render_diagnostic_column("Описание", items["Описание"], field_stats)
 
     with col_conclusion:
-        render_short_result("Заключение", conclusion_result)
+        render_diagnostic_column("Заключение", items["Заключение"], field_stats)
 
 
 def render_summary_cards(result: dict) -> None:
@@ -568,10 +670,11 @@ def render_json_export(result: dict | None) -> None:
         st.info("Нет результата для отображения.")
         return
 
-    st.json(result)
-    st.download_button(
-        label="Скачать JSON",
-        data=json.dumps(result, ensure_ascii=False, indent=2),
-        file_name="pas_mri_extraction.json",
-        mime="application/json",
-    )
+    with st.expander("Structured JSON", expanded=False):
+        st.json(result)
+        st.download_button(
+            label="Скачать JSON",
+            data=json.dumps(result, ensure_ascii=False, indent=2),
+            file_name="pas_mri_extraction.json",
+            mime="application/json",
+        )
