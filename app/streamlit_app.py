@@ -5,7 +5,7 @@ from typing import Any
 
 import streamlit as st
 
-from pas_mri_extractor.pipeline import extract_features_dual
+from pas_mri_extractor.pipeline import extract_features, extract_features_dual
 from pas_mri_extractor.report_sections import split_report_sections
 
 
@@ -269,6 +269,21 @@ if "is_running" not in st.session_state:
 if "model_loaded" not in st.session_state:
     st.session_state["model_loaded"] = False
 
+if "last_result" not in st.session_state:
+    st.session_state["last_result"] = None
+
+if "last_dual_result" not in st.session_state:
+    st.session_state["last_dual_result"] = None
+
+if "last_sections" not in st.session_state:
+    st.session_state["last_sections"] = None
+
+if "last_model_name" not in st.session_state:
+    st.session_state["last_model_name"] = None
+
+if "last_diagnostic_mode" not in st.session_state:
+    st.session_state["last_diagnostic_mode"] = False
+
 
 with st.sidebar:
     st.header("Настройки")
@@ -277,6 +292,13 @@ with st.sidebar:
         "Модель",
         ["qwen_7b"],
         index=0,
+        key="model_name",
+    )
+
+    diagnostic_mode = st.checkbox(
+        "Diagnostic extraction comparison",
+        value=False,
+        help="Run full/body/conclusion extraction for comparison.",
     )
 
     st.markdown("---")
@@ -334,14 +356,25 @@ if run:
 
     try:
         with st.spinner("Выполняется извлечение признаков..."):
-            dual_result = extract_features_dual(
-                text=text,
-                model_name=model_name,
-            )
-
-            result = dual_result["full"]
+            if diagnostic_mode:
+                dual_result = extract_features_dual(
+                    text=text,
+                    model_name=model_name,
+                )
+                result = dual_result["full"]
+            else:
+                dual_result = None
+                result = extract_features(
+                    text=text,
+                    model_name=model_name,
+                )
 
         st.session_state["model_loaded"] = True
+        st.session_state["last_result"] = result
+        st.session_state["last_dual_result"] = dual_result
+        st.session_state["last_sections"] = sections
+        st.session_state["last_model_name"] = model_name
+        st.session_state["last_diagnostic_mode"] = diagnostic_mode
 
     except Exception as error:
         st.error(f"Ошибка: {error}")
@@ -350,36 +383,44 @@ if run:
     finally:
         st.session_state["is_running"] = False
 
+
+result = st.session_state.get("last_result")
+dual_result = st.session_state.get("last_dual_result")
+sections = st.session_state.get("last_sections")
+last_diagnostic_mode = st.session_state.get("last_diagnostic_mode", False)
+
+if result:
     with st.expander("Разбор структуры отчёта", expanded=False):
-        if sections.has_conclusion:
+        if sections and sections.has_conclusion:
             st.success("Заключение найдено")
         else:
             st.warning("Заключение не найдено")
 
         st.markdown("**Описательная часть:**")
-        st.text(sections.body or "Нет данных")
+        st.text((sections.body or "Нет данных") if sections else "Нет данных")
 
         st.markdown("**Заключение:**")
-        st.text(sections.conclusion or "Нет данных")
+        st.text((sections.conclusion or "Нет данных") if sections else "Нет данных")
 
-    with st.expander(
-        "Сравнение: полный отчёт / описание / заключение",
-        expanded=False,
-    ):
-        full_result = dual_result.get("full")
-        body_result = dual_result.get("body")
-        conclusion_result = dual_result.get("conclusion")
+    if last_diagnostic_mode and dual_result:
+        with st.expander(
+            "Сравнение: полный отчёт / описание / заключение",
+            expanded=False,
+        ):
+            full_result = dual_result.get("full")
+            body_result = dual_result.get("body")
+            conclusion_result = dual_result.get("conclusion")
 
-        col_full, col_body, col_conclusion = st.columns(3)
+            col_full, col_body, col_conclusion = st.columns(3)
 
-        with col_full:
-            render_short_result("Полный отчёт", full_result)
+            with col_full:
+                render_short_result("Полный отчёт", full_result)
 
-        with col_body:
-            render_short_result("Описание", body_result)
+            with col_body:
+                render_short_result("Описание", body_result)
 
-        with col_conclusion:
-            render_short_result("Заключение", conclusion_result)
+            with col_conclusion:
+                render_short_result("Заключение", conclusion_result)
 
     case_info = result.get("case_info", {})
     features = result.get("extracted_features", {})
