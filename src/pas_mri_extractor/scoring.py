@@ -16,6 +16,65 @@ from .schemas import (
 from .config import load_config
 score_cfg = load_config("risk_score.yaml")
 
+
+def cfg_get(path: tuple[str, ...], default=None):
+    current = score_cfg
+
+    for key in path:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key)
+
+    return default if current is None else current
+
+
+def cfg_weight(path: tuple[str, ...], default: int = 0) -> int:
+    return int(cfg_get(path, default))
+
+
+def resolve_risk_group(clinical_score: int) -> str:
+    risk_groups = cfg_get(("risk_groups",), {})
+
+    for group_name in ["low", "moderate", "high"]:
+        group_cfg = risk_groups.get(group_name, {})
+        min_score = group_cfg.get("min")
+        max_score = group_cfg.get("max")
+
+        if min_score is None or max_score is None:
+            continue
+
+        if int(min_score) <= clinical_score <= int(max_score):
+            return group_name
+
+    if clinical_score <= 3:
+        return "low"
+
+    if clinical_score <= 9:
+        return "moderate"
+
+    return "high"
+
+
+def get_base_risk_prediction(risk_group: str) -> tuple[int, int, int, str]:
+    prediction = cfg_get(("risk_predictions", risk_group), {})
+
+    return (
+        int(prediction.get("blood_loss_percent", 0)),
+        int(prediction.get("vascular_percent", 0)),
+        int(prediction.get("bladder_percent", 0)),
+        str(prediction.get("blood_loss_range", "нет данных")),
+    )
+
+
+def get_readiness(risk_group: str) -> tuple[str, str]:
+    readiness = cfg_get(("readiness_levels", risk_group), {})
+
+    return (
+        str(readiness.get("level", "")),
+        str(readiness.get("text", "")),
+    )
+
+
 def normalize_mri_result(result: MRIExtractionResult | dict) -> FullMRIResult:
     if isinstance(result, MRIExtractionResult):
         result_dict = result.model_dump()
@@ -56,65 +115,110 @@ def normalize_mri_result(result: MRIExtractionResult | dict) -> FullMRIResult:
     clinical_score = 0
     reasons = []
 
-    if invasion == "percreta":
-        clinical_score += 5
-        reasons.append("percreta: +5")
-    elif invasion == "increta":
-        clinical_score += 3
-        reasons.append("increta: +3")
-    elif invasion == "accreta":
-        clinical_score += 1
-        reasons.append("accreta: +1")
+    invasion_score = cfg_weight(("scoring", "invasion_type", invasion), 0)
+    if invasion_score > 0:
+        clinical_score += invasion_score
+        reasons.append(f"{invasion}: +{invasion_score}")
 
     if confidence == "definite" and invasion != "none":
-        clinical_score += 2
-        reasons.append("явное врастание: +2")
+        confidence_score = cfg_weight(
+            ("scoring", "invasion_confidence", confidence),
+            0,
+        )
+        clinical_score += confidence_score
+        reasons.append(f"явное врастание: +{confidence_score}")
     elif confidence in ["probable", "possible"] and invasion != "none":
-        clinical_score += 1
-        reasons.append("вероятное/возможное врастание: +1")
+        confidence_score = cfg_weight(
+            ("scoring", "invasion_confidence", confidence),
+            0,
+        )
+        clinical_score += confidence_score
+        reasons.append(f"вероятное/возможное врастание: +{confidence_score}")
 
     if bladder == "present":
-        clinical_score += 3
-        reasons.append("вовлечение мочевого пузыря: +3")
+        bladder_score = cfg_weight(
+            ("scoring", "features", "bladder_involvement", bladder),
+            0,
+        )
+        clinical_score += bladder_score
+        reasons.append(f"вовлечение мочевого пузыря: +{bladder_score}")
     elif bladder in ["possible", "probable"]:
-        clinical_score += 2
-        reasons.append("возможное вовлечение мочевого пузыря: +2")
+        bladder_score = cfg_weight(
+            ("scoring", "features", "bladder_involvement", bladder),
+            0,
+        )
+        clinical_score += bladder_score
+        reasons.append(f"возможное вовлечение мочевого пузыря: +{bladder_score}")
 
     if parametrium == "present":
-        clinical_score += 3
-        reasons.append("вовлечение параметрия: +3")
+        parametrium_score = cfg_weight(
+            ("scoring", "features", "parametrium_involvement", parametrium),
+            0,
+        )
+        clinical_score += parametrium_score
+        reasons.append(f"вовлечение параметрия: +{parametrium_score}")
 
     if thinning == "present":
-        clinical_score += 1
-        reasons.append("истончение миометрия/рубца: +1")
+        thinning_score = cfg_weight(
+            ("scoring", "features", "uterine_wall_thinning", thinning),
+            0,
+        )
+        clinical_score += thinning_score
+        reasons.append(f"истончение миометрия/рубца: +{thinning_score}")
 
     if hernia == "present":
-        clinical_score += 2
-        reasons.append("выбухание/грыжа: +2")
+        hernia_score = cfg_weight(
+            ("scoring", "features", "uterine_hernia_or_bulging", hernia),
+            0,
+        )
+        clinical_score += hernia_score
+        reasons.append(f"выбухание/грыжа: +{hernia_score}")
 
     if vessels == "present":
-        clinical_score += 1
-        reasons.append("расширенные сосуды: +1")
+        vessels_score = cfg_weight(
+            ("scoring", "features", "retroplacental_vessels", vessels),
+            0,
+        )
+        clinical_score += vessels_score
+        reasons.append(f"расширенные сосуды: +{vessels_score}")
 
     if lacunae == "present":
-        clinical_score += 1
-        reasons.append("лакуны: +1")
+        lacunae_score = cfg_weight(
+            ("scoring", "features", "lacunae", lacunae),
+            0,
+        )
+        clinical_score += lacunae_score
+        reasons.append(f"лакуны: +{lacunae_score}")
 
     if previa == "present":
-        clinical_score += 1
-        reasons.append("предлежание плаценты: +1")
+        previa_score = cfg_weight(
+            ("scoring", "features", "placenta_previa", previa),
+            0,
+        )
+        clinical_score += previa_score
+        reasons.append(f"предлежание плаценты: +{previa_score}")
 
     if anterior == "present":
-        clinical_score += 1
-        reasons.append("передняя плацента: +1")
+        anterior_score = cfg_weight(
+            ("scoring", "features", "anterior_placenta", anterior),
+            0,
+        )
+        clinical_score += anterior_score
+        reasons.append(f"передняя плацента: +{anterior_score}")
 
     if bleeding == "present":
-        clinical_score += 2
-        reasons.append("кровотечение: +2")
+        bleeding_score = cfg_weight(
+            ("scoring", "features", "preoperative_bleeding", bleeding),
+            0,
+        )
+        clinical_score += bleeding_score
+        reasons.append(f"кровотечение: +{bleeding_score}")
 
-    if isinstance(prev_cs, int) and prev_cs >= 2:
-        clinical_score += 1
-        reasons.append("≥2 КС: +1")
+    previous_cs_min_count = cfg_get(("scoring", "previous_cs_count", "min_count"), 2)
+    if isinstance(prev_cs, int) and prev_cs >= int(previous_cs_min_count):
+        previous_cs_score = cfg_weight(("scoring", "previous_cs_count", "score"), 0)
+        clinical_score += previous_cs_score
+        reasons.append(f"≥{previous_cs_min_count} КС: +{previous_cs_score}")
 
     red_flag = 0
 
@@ -130,12 +234,7 @@ def normalize_mri_result(result: MRIExtractionResult | dict) -> FullMRIResult:
     if invasion == "percreta" and bladder in ["possible", "probable", "present"]:
         clinical_score = max(clinical_score, 9)
 
-    if clinical_score <= 3:
-        risk_group = "low"
-    elif clinical_score <= 9:
-        risk_group = "moderate"
-    else:
-        risk_group = "high"
+    risk_group = resolve_risk_group(clinical_score)
 
     if invasion == "percreta":
         risk_group = "high"
@@ -149,15 +248,9 @@ def normalize_mri_result(result: MRIExtractionResult | dict) -> FullMRIResult:
     if bladder == "present" and invasion == "percreta":
         risk_group = "high"
 
-    if risk_group == "low":
-        blood_risk, vascular_risk, bladder_risk = 10, 10, 5
-        blood_loss_range = "500–1000 мл"
-    elif risk_group == "moderate":
-        blood_risk, vascular_risk, bladder_risk = 35, 25, 15
-        blood_loss_range = "1000–1500 мл"
-    else:
-        blood_risk, vascular_risk, bladder_risk = 70, 50, 30
-        blood_loss_range = "1500–2500 мл"
+    blood_risk, vascular_risk, bladder_risk, blood_loss_range = (
+        get_base_risk_prediction(risk_group)
+    )
 
     if invasion == "percreta":
         blood_risk = max(blood_risk, 70)
@@ -202,15 +295,7 @@ def normalize_mri_result(result: MRIExtractionResult | dict) -> FullMRIResult:
     vascular_risk = int(min(vascular_risk, 75))
     bladder_risk = int(min(bladder_risk, 65))
 
-    if risk_group == "low":
-        readiness_level = "1"
-        readiness_text = "Уровень 1: низкий риск, стандартная бригада, обычная подготовка."
-    elif risk_group == "moderate":
-        readiness_level = "2"
-        readiness_text = "Уровень 2: умеренный риск, усиленная подготовка, запас компонентов крови, сосудистый хирург по вызову."
-    else:
-        readiness_level = "3"
-        readiness_text = "Уровень 3: высокий риск, мультидисциплинарная команда, сосудистый хирург/уролог заранее, готовность к расширенной операции."
+    readiness_level, readiness_text = get_readiness(risk_group)
 
     score_reasons = "; ".join(reasons) if reasons else "значимых признаков высокого риска не выявлено"
 

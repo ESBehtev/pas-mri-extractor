@@ -18,7 +18,13 @@ from state import (
 )
 
 from pas_mri_extractor.pipeline import extract_features, extract_features_dual
+from pas_mri_extractor.pipeline import get_cached_model
 from pas_mri_extractor.report_sections import split_report_sections
+
+
+@st.cache_resource(show_spinner=False)
+def preload_model(model_name: str):
+    return get_cached_model(model_name)
 
 
 st.set_page_config(
@@ -35,20 +41,8 @@ st.caption("Структурированное извлечение призна
 
 
 with st.sidebar:
-    st.header("Навигация")
-    app_mode = st.radio(
-        "Режим",
-        ["Извлечение", "Конфигурация"],
-        key="app_mode",
-    )
-
-    st.markdown("---")
     st.header("Статус")
-
-    if st.session_state.get("model_loaded"):
-        st.success("Модель загружена в память")
-    else:
-        st.info("Модель будет загружена при первом извлечении")
+    model_status = st.empty()
 
     st.markdown("---")
     st.warning(
@@ -57,14 +51,27 @@ with st.sidebar:
     )
 
 
-if app_mode == "Конфигурация":
+st.subheader("Input")
+
+ui_mode = st.radio(
+    "Раздел",
+    ["Извлечение", "Конфигурация"],
+    horizontal=True,
+    key="input_ui_mode",
+)
+
+
+if ui_mode == "Конфигурация":
+    if st.session_state.get("model_loaded"):
+        model_status.success("Модель загружена в память")
+    else:
+        model_status.info("Модель не загружена")
+
     render_config_studio()
     st.stop()
 
 
 result, dual_result, sections, last_diagnostic_mode = get_last_outputs()
-
-st.subheader("Input")
 
 control_col, example_col = st.columns([1, 2])
 
@@ -81,6 +88,22 @@ with control_col:
         value=False,
         help="Run full/body/conclusion extraction for comparison.",
     )
+
+model_ready = False
+
+model_status.info("Модель загружается...")
+try:
+    with st.spinner("Модель загружается..."):
+        preload_model(model_name)
+except Exception as error:
+    st.session_state["model_loaded"] = False
+    model_status.error("Ошибка загрузки модели")
+    st.error(f"Не удалось загрузить модель: {error}")
+else:
+    st.session_state["model_loaded"] = True
+    st.session_state["last_model_name"] = model_name
+    model_status.success("Модель загружена в память")
+    model_ready = True
 
 with example_col:
     example_name = st.selectbox(
@@ -113,7 +136,8 @@ st.button(
     "Извлечь признаки",
     type="primary",
     disabled=(
-        st.session_state.get("is_running", False)
+        not model_ready
+        or st.session_state.get("is_running", False)
         or st.session_state.get("extract_requested", False)
     ),
     on_click=request_extraction,
@@ -122,6 +146,11 @@ st.button(
 
 if st.session_state.get("extract_requested"):
     if st.session_state.get("is_running"):
+        clear_extraction_request()
+        st.stop()
+
+    if not model_ready:
+        st.error("Модель не загружена")
         clear_extraction_request()
         st.stop()
 

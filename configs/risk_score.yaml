@@ -1,8 +1,9 @@
 # NOTE:
-# Scoring is currently implemented in src/pas_mri_extractor/scoring.py.
-# This YAML documents the base weights/thresholds but is not the runtime
-# source of truth yet. Keep clinical behavior changes in scoring.py covered
-# by regression tests before moving logic into this config.
+# src/pas_mri_extractor/scoring.py reads base weights, thresholds,
+# base risk predictions, and readiness text from this file.
+# Python still owns red_flag rules, hard risk overrides, risk post-processing,
+# and caps until a later scoring refactor. runtime_configs/risk_score.local.yaml
+# is not applied to the pipeline yet.
 
 scoring:
 
