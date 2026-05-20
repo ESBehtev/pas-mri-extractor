@@ -6,6 +6,11 @@ from typing import Any
 
 import streamlit as st
 
+try:
+    from provenance import build_report_highlighting
+except ModuleNotFoundError:
+    from app.provenance import build_report_highlighting
+
 
 VALUE_TRANSLATIONS = {
     None: "нет данных",
@@ -599,21 +604,24 @@ def render_evidence_highlighting(result: dict, report_text: str | None) -> None:
     negative_findings = as_list(evidence.get("negative_findings"))
 
     if not positive_findings and not uncertain_findings and not negative_findings:
-        with st.expander("Подсветка evidence в отчёте", expanded=False):
+        with st.expander("Подсветка отчёта", expanded=False):
             st.write("Evidence для подсветки нет.")
         return
 
-    highlighted_text, found_counts, not_found = build_evidence_highlights(
+    provenance = build_report_highlighting(
         report_text,
-        evidence,
+        result,
     )
+    highlighted_text = provenance["html"]
+    counts = provenance["counts"]
+    unmatched_evidence = provenance["unmatched_evidence"]
 
-    with st.expander("Подсветка evidence в отчёте", expanded=False):
+    with st.expander("Подсветка отчёта", expanded=False):
         col_pos, col_unc, col_neg, col_missing = st.columns(4)
-        col_pos.metric("Найдено positive", found_counts["positive"])
-        col_unc.metric("Найдено uncertain", found_counts["uncertain"])
-        col_neg.metric("Найдено negative", found_counts["negative"])
-        col_missing.metric("Не найдено", len(not_found))
+        col_pos.metric("positive sentences", counts["positive"])
+        col_unc.metric("uncertain sentences", counts["uncertain"])
+        col_neg.metric("negative sentences", counts["negative"])
+        col_missing.metric("unmatched evidence", len(unmatched_evidence))
 
         render_html(
             f"""
@@ -628,9 +636,9 @@ def render_evidence_highlighting(result: dict, report_text: str | None) -> None:
             """
         )
 
-        if not_found:
+        if unmatched_evidence:
             st.markdown("**Не найдено в тексте:**")
-            for phrase in not_found:
+            for phrase in unmatched_evidence:
                 st.write(f"- {phrase}")
 
 
