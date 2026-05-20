@@ -79,9 +79,9 @@ class RuleNegationTest(unittest.TestCase):
         )
 
         self.assertEqual(result.extracted_features.invasion.type, "increta")
-        self.assertNotEqual(
+        self.assertEqual(
             result.extracted_features.anatomy.bladder_involvement,
-            "present",
+            "possible",
         )
 
 

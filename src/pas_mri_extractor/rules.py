@@ -24,7 +24,8 @@ NEGATION_PATTERNS = [
     r"\bбез\s+достоверн\w*",
     r"\bданн\w*\s+за\b.{0,80}\bнет\b",
     r"\bпризнак\w*\b.{0,80}\bнет\b",
-    r"\bисключа\w*",
+    r"(?<!не\s)\bисключается\b",
+    r"(?<!не\s)\bисключен[аыо]?\b",
 ]
 
 UNCERTAIN_PATTERNS = [
@@ -76,17 +77,42 @@ def get_match_context(
     return text[start:end]
 
 
+def get_scoped_match_context(
+    text: str,
+    match: re.Match,
+    window_chars: int = NEGATION_WINDOW_CHARS,
+) -> str:
+    start = max(0, match.start() - window_chars)
+    end = min(len(text), match.end() + window_chars)
+
+    boundary_chars = ".;\n"
+    scoped_start = start
+    scoped_end = end
+
+    for boundary in boundary_chars:
+        before_boundary = text.rfind(boundary, start, match.start())
+        if before_boundary >= scoped_start:
+            scoped_start = before_boundary + 1
+
+        after_boundary = text.find(boundary, match.end(), end)
+        if after_boundary != -1:
+            scoped_end = min(scoped_end, after_boundary + 1)
+
+    return text[scoped_start:scoped_end]
+
+
 def is_uncertain_context(context: str) -> bool:
     return any(re.search(pattern, context) for pattern in UNCERTAIN_PATTERNS)
 
 
-def is_negated_match(text: str, match: re.Match) -> bool:
-    context = get_match_context(text, match)
-
-    if is_uncertain_context(context):
-        return False
-
+def has_negation_context(context: str) -> bool:
     return any(re.search(pattern, context) for pattern in NEGATION_PATTERNS)
+
+
+def is_negated_match(text: str, match: re.Match) -> bool:
+    context = get_scoped_match_context(text, match)
+
+    return has_negation_context(context)
 
 
 def add_negative_evidence(features: dict[str, Any], feature_name: str) -> None:
