@@ -47,6 +47,43 @@ class RuleNegationTest(unittest.TestCase):
             result.evidence.uncertain_findings,
         )
 
+    def test_placenta_increta_is_detected_as_increta(self) -> None:
+        result = rule_extract_features(
+            "МР-картина соответствует placenta increta в области рубца."
+        )
+
+        self.assertEqual(result.extracted_features.invasion.type, "increta")
+
+    def test_possible_serosal_involvement_does_not_force_percreta(self) -> None:
+        result = rule_extract_features(
+            "Нельзя исключить начальное вовлечение серозной оболочки."
+        )
+
+        self.assertNotEqual(result.extracted_features.invasion.type, "percreta")
+
+    def test_definite_bladder_wall_invasion_can_be_percreta(self) -> None:
+        result = rule_extract_features(
+            "Определяется достоверная инвазия стенки мочевого пузыря."
+        )
+
+        self.assertEqual(result.extracted_features.invasion.type, "percreta")
+
+    def test_sample_like_increta_with_possible_bladder_is_not_percreta(self) -> None:
+        result = rule_extract_features(
+            "Маточно-пузырное пространство частично не дифференцируется, "
+            "однако достоверных признаков инвазии стенки мочевого пузыря "
+            "не получено. Заключение: МР-картина соответствует placenta "
+            "increta. Признаки возможного начального вовлечения "
+            "маточно-пузырного пространства без убедительных данных за "
+            "placenta percreta."
+        )
+
+        self.assertEqual(result.extracted_features.invasion.type, "increta")
+        self.assertNotEqual(
+            result.extracted_features.anatomy.bladder_involvement,
+            "present",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
