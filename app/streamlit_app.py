@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import streamlit as st
 
 from components import (
@@ -8,6 +6,7 @@ from components import (
     render_json_export,
     render_report_sections,
 )
+from examples import get_example_by_name, get_example_names
 from state import (
     get_last_outputs,
     init_session_state,
@@ -47,16 +46,13 @@ with st.sidebar:
     )
 
 
-input_tab, clinical_tab, json_tab, diagnostics_tab = st.tabs(
-    ["Input", "Clinical Result", "Structured JSON", "Diagnostics"]
-)
-
 result, dual_result, sections, last_diagnostic_mode = get_last_outputs()
 
+st.subheader("Input")
 
-with input_tab:
-    st.subheader("Input")
+control_col, example_col = st.columns([1, 2])
 
+with control_col:
     model_name = st.selectbox(
         "Модель",
         ["qwen_7b"],
@@ -70,84 +66,97 @@ with input_tab:
         help="Run full/body/conclusion extraction for comparison.",
     )
 
-    example_path = Path("examples/sample_mri.txt")
+with example_col:
+    example_name = st.selectbox(
+        "Пример отчёта",
+        get_example_names(),
+        index=0,
+        key="example_name",
+    )
+    selected_example = get_example_by_name(example_name)
+
+    st.caption(
+        f"{selected_example['category']} | "
+        f"{selected_example['difficulty']} | "
+        f"{selected_example['description']}"
+    )
 
     if st.button("Загрузить пример"):
-        if example_path.exists():
-            st.session_state["report_text"] = example_path.read_text(
-                encoding="utf-8"
-            )
-        else:
-            st.error("Файл examples/sample_mri.txt не найден")
-
-    text = st.text_area(
-        "Текст MRI-отчёта",
-        key="report_text",
-        height=280,
-        placeholder="Вставьте MRI-отчёт...",
-    )
-
-    run = st.button(
-        "Извлечь признаки",
-        type="primary",
-        disabled=st.session_state["is_running"],
-    )
-
-    if run:
-        if not text.strip():
-            st.error("Вставьте текст MRI-отчёта")
-            st.stop()
-
-        current_sections = split_report_sections(text)
-        set_running(True)
-
-        try:
-            with st.spinner("Выполняется извлечение признаков..."):
-                if diagnostic_mode:
-                    current_dual_result = extract_features_dual(
-                        text=text,
-                        model_name=model_name,
-                    )
-                    current_result = current_dual_result["full"]
-                else:
-                    current_dual_result = None
-                    current_result = extract_features(
-                        text=text,
-                        model_name=model_name,
-                    )
-
-            save_extraction_result(
-                result=current_result,
-                dual_result=current_dual_result,
-                sections=current_sections,
-                model_name=model_name,
-                diagnostic_mode=diagnostic_mode,
-            )
-
-            result, dual_result, sections, last_diagnostic_mode = get_last_outputs()
-
-        except Exception as error:
-            st.error(f"Ошибка: {error}")
-            st.stop()
-
-        finally:
-            set_running(False)
+        st.session_state["report_text"] = selected_example["report_text"]
 
 
-with clinical_tab:
+text = st.text_area(
+    "Текст MRI-отчёта",
+    key="report_text",
+    height=280,
+    placeholder="Вставьте MRI-отчёт...",
+)
+
+
+run = st.button(
+    "Извлечь признаки",
+    type="primary",
+    disabled=st.session_state["is_running"],
+)
+
+
+if run:
+    if not text.strip():
+        st.error("Вставьте текст MRI-отчёта")
+        st.stop()
+
+    current_sections = split_report_sections(text)
+    set_running(True)
+
+    try:
+        with st.spinner("Выполняется извлечение признаков..."):
+            if diagnostic_mode:
+                current_dual_result = extract_features_dual(
+                    text=text,
+                    model_name=model_name,
+                )
+                current_result = current_dual_result["full"]
+            else:
+                current_dual_result = None
+                current_result = extract_features(
+                    text=text,
+                    model_name=model_name,
+                )
+
+        save_extraction_result(
+            result=current_result,
+            dual_result=current_dual_result,
+            sections=current_sections,
+            model_name=model_name,
+            diagnostic_mode=diagnostic_mode,
+        )
+
+        result, dual_result, sections, last_diagnostic_mode = get_last_outputs()
+
+    except Exception as error:
+        st.error(f"Ошибка: {error}")
+        st.stop()
+
+    finally:
+        set_running(False)
+
+
+if result:
+    st.markdown("---")
     render_clinical_result(result)
 
-
-with json_tab:
+    st.markdown("---")
+    st.subheader("Structured JSON")
     render_json_export(result)
 
-
-with diagnostics_tab:
-    if not last_diagnostic_mode:
-        st.info("Diagnostic extraction comparison выключен.")
-    else:
-        st.subheader("Разбор структуры отчёта")
+    if last_diagnostic_mode:
+        st.markdown("---")
+        st.subheader("Diagnostics")
+        st.markdown("#### Разбор структуры отчёта")
         render_report_sections(sections)
 
-        st.subheader("Сравнение: полный отчёт / описание / заключение")
+        st.markdown("#### Сравнение: полный отчёт / описание / заключение")
         render_dual_comparison(dual_result)
+else:
+    st.markdown("---")
+    render_clinical_result(result)

@@ -82,17 +82,32 @@ def colorize_invasion(value: Any) -> str:
     return mapping.get(value, "#9ca3af")
 
 
-def colorize_confidence(value: Any) -> str:
+def colorize_status(value: Any) -> str:
     value = str(value).lower()
 
+    if "отсутств" in value:
+        return "#16a34a"
+
     mapping = {
+        "none": "#16a34a",
         "absent": "#16a34a",
-        "possible": "#eab308",
-        "probable": "#f97316",
+        "negative": "#16a34a",
+        "отсутствует": "#16a34a",
+        "present": "#f59e0b",
+        "выявлено": "#f59e0b",
+        "possible": "#f97316",
+        "возможно": "#f97316",
+        "probable": "#ea580c",
+        "вероятно": "#ea580c",
         "definite": "#dc2626",
+        "достоверно": "#dc2626",
     }
 
     return mapping.get(value, "#9ca3af")
+
+
+def colorize_confidence(value: Any) -> str:
+    return colorize_status(value)
 
 
 def colorize_score(value: Any) -> str:
@@ -177,6 +192,58 @@ def finding_box(text: str, color: str) -> None:
             line-height: 1.45;
         ">
             {safe_text}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def feature_card(
+    title: str,
+    rows: list[tuple[str, Any, str | None]],
+) -> None:
+    safe_title = html.escape(title)
+    row_html = []
+
+    for label, value, color in rows:
+        row_color = color or colorize_status(value)
+        safe_label = html.escape(str(label))
+        safe_value = html.escape(ru(value))
+        row_html.append(
+            f"""
+            <div style="
+                display: flex;
+                justify-content: space-between;
+                gap: 12px;
+                align-items: center;
+                border-top: 1px solid #334155;
+                padding: 9px 0;
+            ">
+                <span style="color: #cbd5e1;">{safe_label}</span>
+                <span style="
+                    color: {row_color};
+                    font-weight: 800;
+                    text-align: right;
+                    white-space: nowrap;
+                ">{safe_value}</span>
+            </div>
+            """
+        )
+
+    st.markdown(
+        f"""
+        <div style="
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 14px 16px 10px 16px;
+            margin-bottom: 14px;
+        ">
+            <div style="
+                font-size: 15px;
+                font-weight: 800;
+                margin-bottom: 4px;
+            ">{safe_title}</div>
+            {''.join(row_html)}
         </div>
         """,
         unsafe_allow_html=True,
@@ -320,11 +387,12 @@ def render_summary_cards(result: dict) -> None:
 
 def render_clinical_result(result: dict | None) -> None:
     if not result:
-        st.info("Вставьте отчёт и нажмите Extract на вкладке Input.")
+        st.info("Вставьте отчёт и нажмите Extract.")
         return
 
     case_info = result.get("case_info", {})
     features = result.get("extracted_features", {})
+    invasion = features.get("invasion", {})
     anatomy = features.get("anatomy", {})
     placenta_location = features.get("placenta_location", {})
     mri_signs = features.get("mri_signs", {})
@@ -338,50 +406,80 @@ def render_clinical_result(result: dict | None) -> None:
     render_summary_cards(result)
 
     st.subheader("Клинические признаки")
-    col_left, col_right = st.columns([1, 1])
+    col_left, col_mid, col_right = st.columns(3)
 
     with col_left:
-        st.markdown("#### Клинические данные")
-        st.write(
-            f"**Срок беременности:** "
-            f"{ru(case_info.get('gestational_week'))} недель"
+        feature_card(
+            "Clinical data",
+            [
+                ("Срок беременности", case_info.get("gestational_week"), "#cbd5e1"),
+                ("КС в анамнезе", case_info.get("previous_cs_count"), "#cbd5e1"),
+            ],
         )
-        st.write(
-            f"**Кесаревых сечений в анамнезе:** "
-            f"{ru(case_info.get('previous_cs_count'))}"
+        feature_card(
+            "Placenta location",
+            [
+                ("Предлежание", placenta_location.get("placenta_previa"), None),
+                (
+                    "Передняя стенка",
+                    placenta_location.get("anterior_placenta"),
+                    None,
+                ),
+            ],
         )
 
-        st.markdown("#### Анатомия")
-        st.write(f"**Мочевой пузырь:** {ru(anatomy.get('bladder_involvement'))}")
-        st.write(f"**Параметрий:** {ru(anatomy.get('parametrium_involvement'))}")
-        st.write(f"**Задняя стенка:** {ru(anatomy.get('posterior_wall_involvement'))}")
-
-        st.markdown("#### Локализация плаценты")
-        st.write(
-            f"**Предлежание плаценты:** "
-            f"{ru(placenta_location.get('placenta_previa'))}"
+    with col_mid:
+        feature_card(
+            "Invasion",
+            [
+                ("Тип", invasion.get("type"), colorize_invasion(invasion.get("type"))),
+                (
+                    "Уверенность",
+                    invasion.get("confidence"),
+                    colorize_confidence(invasion.get("confidence")),
+                ),
+            ],
         )
-        st.write(
-            f"**Плацента по передней стенке:** "
-            f"{ru(placenta_location.get('anterior_placenta'))}"
+        feature_card(
+            "Anatomy",
+            [
+                ("Мочевой пузырь", anatomy.get("bladder_involvement"), None),
+                ("Параметрий", anatomy.get("parametrium_involvement"), None),
+                ("Задняя стенка", anatomy.get("posterior_wall_involvement"), None),
+            ],
         )
 
     with col_right:
-        st.markdown("#### MRI-признаки")
-        sign_labels = {
-            "retroplacental_vessels": "Ретроплацентарные сосуды",
-            "lacunae": "Лакуны",
-            "uterine_wall_thinning": "Истончение миометрия/рубца",
-            "uterine_hernia_or_bulging": "Выбухание/грыжевидная деформация",
-        }
-
-        for key, label in sign_labels.items():
-            st.write(f"**{label}:** {ru(mri_signs.get(key))}")
-
-        st.markdown("#### Клинический контекст")
-        st.write(
-            f"**Кровотечение до операции:** "
-            f"{ru(clinical_context.get('preoperative_bleeding'))}"
+        feature_card(
+            "MRI signs",
+            [
+                (
+                    "Ретроплацентарные сосуды",
+                    mri_signs.get("retroplacental_vessels"),
+                    None,
+                ),
+                ("Лакуны", mri_signs.get("lacunae"), None),
+                (
+                    "Истончение миометрия/рубца",
+                    mri_signs.get("uterine_wall_thinning"),
+                    None,
+                ),
+                (
+                    "Выбухание/грыжевидная деформация",
+                    mri_signs.get("uterine_hernia_or_bulging"),
+                    None,
+                ),
+            ],
+        )
+        feature_card(
+            "Clinical context",
+            [
+                (
+                    "Кровотечение до операции",
+                    clinical_context.get("preoperative_bleeding"),
+                    None,
+                ),
+            ],
         )
 
     st.subheader("Evidence")
