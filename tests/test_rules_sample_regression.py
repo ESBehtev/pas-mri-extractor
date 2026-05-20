@@ -22,6 +22,12 @@ class RulesSampleRegressionTest(unittest.TestCase):
         )
         self.assertEqual(result.score.red_flag, 0)
         self.assertEqual(result.score.clinical_score, 11)
+        self.assertEqual(result.score.risk_group, "high")
+        self.assertEqual(
+            result.predicted_risks.estimated_blood_loss_ml_range,
+            "1500–2500 мл",
+        )
+        self.assertEqual(result.recommendation.readiness_level, "3")
 
 
 if __name__ == "__main__":

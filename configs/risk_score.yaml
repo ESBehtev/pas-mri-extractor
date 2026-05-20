@@ -1,3 +1,9 @@
+# NOTE:
+# Scoring is currently implemented in src/pas_mri_extractor/scoring.py.
+# This YAML documents the base weights/thresholds but is not the runtime
+# source of truth yet. Keep clinical behavior changes in scoring.py covered
+# by regression tests before moving logic into this config.
+
 scoring:
 
   invasion_type:
