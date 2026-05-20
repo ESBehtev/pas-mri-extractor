@@ -15,6 +15,7 @@ VALUE_TRANSLATIONS = {
     "possible": "возможно",
     "probable": "вероятно",
     "definite": "достоверно",
+    "confirmed": "подтверждено",
     "unclear": "неясно",
     "low": "низкий",
     "moderate": "умеренный",
@@ -455,6 +456,8 @@ def render_summary_cards(result: dict) -> None:
     features = result.get("extracted_features", {})
     invasion = features.get("invasion", {})
     score = result.get("score", {})
+    invasion_type = invasion.get("type")
+    has_no_pas = invasion_type in [None, "none", "absent"]
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -475,16 +478,19 @@ def render_summary_cards(result: dict) -> None:
     with col3:
         badge(
             "Тип врастания",
-            invasion.get("type"),
-            colorize_invasion(invasion.get("type")),
+            invasion_type,
+            colorize_invasion(invasion_type),
         )
 
     with col4:
-        badge(
-            "Уверенность",
-            invasion.get("confidence"),
-            colorize_confidence(invasion.get("confidence")),
-        )
+        if has_no_pas:
+            badge("PAS", "признаков нет", "#16a34a")
+        else:
+            badge(
+                "Уверенность",
+                invasion.get("confidence"),
+                colorize_confidence(invasion.get("confidence")),
+            )
 
 
 def render_clinical_result(result: dict | None) -> None:
@@ -512,14 +518,14 @@ def render_clinical_result(result: dict | None) -> None:
 
     with col_left:
         feature_card(
-            "Clinical data",
+            "Клинические данные",
             [
                 ("Срок беременности", case_info.get("gestational_week"), "#cbd5e1"),
                 ("КС в анамнезе", case_info.get("previous_cs_count"), "#cbd5e1"),
             ],
         )
         feature_card(
-            "Placenta location",
+            "Локализация плаценты",
             [
                 ("Предлежание", placenta_location.get("placenta_previa"), None),
                 (
@@ -532,7 +538,7 @@ def render_clinical_result(result: dict | None) -> None:
 
     with col_mid:
         feature_card(
-            "Invasion",
+            "Врастание",
             [
                 ("Тип", invasion.get("type"), colorize_invasion(invasion.get("type"))),
                 (
@@ -543,7 +549,7 @@ def render_clinical_result(result: dict | None) -> None:
             ],
         )
         feature_card(
-            "Anatomy",
+            "Анатомическое вовлечение",
             [
                 (
                     "Вовлечение мочевого пузыря",
@@ -565,7 +571,7 @@ def render_clinical_result(result: dict | None) -> None:
 
     with col_right:
         feature_card(
-            "MRI signs",
+            "МР-признаки",
             [
                 (
                     "Ретроплацентарные сосуды",
@@ -586,7 +592,7 @@ def render_clinical_result(result: dict | None) -> None:
             ],
         )
         feature_card(
-            "Clinical context",
+            "Клинический контекст",
             [
                 (
                     "Кровотечение до операции",

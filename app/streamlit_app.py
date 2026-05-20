@@ -98,18 +98,16 @@ text = st.text_area(
 st.button(
     "Извлечь признаки",
     type="primary",
-    disabled=st.session_state.get("is_running", False),
+    disabled=(
+        st.session_state.get("is_running", False)
+        or st.session_state.get("extract_requested", False)
+    ),
     on_click=request_extraction,
 )
 
 
-if st.session_state.get("is_running"):
-    st.info("Извлечение уже выполняется...")
-
-
 if st.session_state.get("extract_requested"):
     if st.session_state.get("is_running"):
-        st.info("Запрос уже выполняется, повторный запуск пропущен.")
         clear_extraction_request()
         st.stop()
 
