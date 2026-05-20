@@ -6,6 +6,7 @@
 """
 
 from copy import deepcopy
+from functools import lru_cache
 
 from .schemas import (
     FullMRIResult,
@@ -14,11 +15,19 @@ from .schemas import (
 )
 
 from .config import load_config
-score_cfg = load_config("risk_score.yaml")
+
+
+@lru_cache(maxsize=1)
+def get_score_config() -> dict:
+    return load_config("risk_score.yaml")
+
+
+def clear_score_config_cache() -> None:
+    get_score_config.cache_clear()
 
 
 def cfg_get(path: tuple[str, ...], default=None):
-    current = score_cfg
+    current = get_score_config()
 
     for key in path:
         if not isinstance(current, dict):

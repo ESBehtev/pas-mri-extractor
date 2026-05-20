@@ -3,6 +3,9 @@ from pathlib import Path
 import streamlit as st
 import yaml
 
+from pas_mri_extractor.config import clear_config_cache
+from pas_mri_extractor.scoring import clear_score_config_cache
+
 
 CONFIG_DIR = Path("configs")
 RUNTIME_CONFIG_DIR = Path("runtime_configs")
@@ -54,9 +57,17 @@ def reset_local_override(config_name: str) -> None:
         local_path.unlink()
 
 
+def clear_runtime_config_caches() -> None:
+    clear_config_cache()
+    clear_score_config_cache()
+
+
 def render_config_studio() -> None:
     st.subheader("Конфигурация")
-    st.warning("Local override сохранён, но пока не применяется к pipeline.")
+    st.warning(
+        "Local overrides применяются при следующем extraction для "
+        "prompt.yaml, rules.yaml и risk_score.yaml."
+    )
 
     config_name = st.selectbox(
         "Config file",
@@ -92,8 +103,12 @@ def render_config_studio() -> None:
     with action_col2:
         if st.button("Сбросить local override"):
             reset_local_override(config_name)
+            clear_runtime_config_caches()
             st.session_state[editor_key] = source_text
-            st.success("Local override сброшен. В редактор загружен исходный config.")
+            st.success(
+                "Local override сброшен. Изменение применится при следующем "
+                "extraction."
+            )
 
     if st.session_state.get(show_source_key, False):
         with st.expander("Исходный config", expanded=True):
@@ -111,5 +126,6 @@ def render_config_studio() -> None:
         except yaml.YAMLError as error:
             st.error(f"YAML invalid: {error}")
         else:
+            clear_runtime_config_caches()
             st.success(f"Local override сохранён: {saved_path}")
-            st.warning("Local override сохранён, но пока не применяется к pipeline.")
+            st.warning("Override будет применён при следующем extraction.")

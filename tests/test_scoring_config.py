@@ -1,7 +1,10 @@
 import copy
 import unittest
-from unittest.mock import patch
+from pathlib import Path
 
+import yaml
+
+from pas_mri_extractor.config import clear_config_cache
 from pas_mri_extractor import scoring
 
 
@@ -44,8 +47,30 @@ SCORING_PAYLOAD = {
 
 
 class ScoringConfigTest(unittest.TestCase):
+    local_path = Path("runtime_configs/risk_score.local.yaml")
+
+    def setUp(self) -> None:
+        self.original_local_content = None
+        if self.local_path.exists():
+            self.original_local_content = self.local_path.read_text(encoding="utf-8")
+            self.local_path.unlink()
+
+        clear_config_cache()
+        scoring.clear_score_config_cache()
+
+    def tearDown(self) -> None:
+        if self.original_local_content is None:
+            if self.local_path.exists():
+                self.local_path.unlink()
+        else:
+            self.local_path.parent.mkdir(parents=True, exist_ok=True)
+            self.local_path.write_text(self.original_local_content, encoding="utf-8")
+
+        clear_config_cache()
+        scoring.clear_score_config_cache()
+
     def test_scoring_uses_yaml_weights_thresholds_and_readiness(self) -> None:
-        test_cfg = copy.deepcopy(scoring.score_cfg)
+        test_cfg = copy.deepcopy(scoring.get_score_config())
         test_cfg["scoring"]["features"]["placenta_previa"]["present"] = 5
         test_cfg["risk_groups"] = {
             "low": {"min": 0, "max": 2},
@@ -56,8 +81,15 @@ class ScoringConfigTest(unittest.TestCase):
         test_cfg["readiness_levels"]["high"]["level"] = "Y"
         test_cfg["readiness_levels"]["high"]["text"] = "YAML readiness"
 
-        with patch.object(scoring, "score_cfg", test_cfg):
-            result = scoring.normalize_mri_result(SCORING_PAYLOAD)
+        self.local_path.parent.mkdir(parents=True, exist_ok=True)
+        self.local_path.write_text(
+            yaml.safe_dump(test_cfg, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        clear_config_cache()
+        scoring.clear_score_config_cache()
+
+        result = scoring.normalize_mri_result(SCORING_PAYLOAD)
 
         self.assertEqual(result.score.clinical_score, 5)
         self.assertEqual(result.score.risk_group, "high")
@@ -67,6 +99,22 @@ class ScoringConfigTest(unittest.TestCase):
         )
         self.assertEqual(result.recommendation.readiness_level, "Y")
         self.assertEqual(result.recommendation.readiness_text, "YAML readiness")
+
+    def test_scoring_uses_base_config_when_local_override_absent(self) -> None:
+        result = scoring.normalize_mri_result(SCORING_PAYLOAD)
+
+        self.assertEqual(result.score.clinical_score, 1)
+        self.assertEqual(result.score.risk_group, "low")
+        self.assertEqual(result.recommendation.readiness_level, "1")
+
+    def test_invalid_local_override_does_not_silently_fallback(self) -> None:
+        self.local_path.parent.mkdir(parents=True, exist_ok=True)
+        self.local_path.write_text("scoring: [", encoding="utf-8")
+        clear_config_cache()
+        scoring.clear_score_config_cache()
+
+        with self.assertRaises(yaml.YAMLError):
+            scoring.normalize_mri_result(SCORING_PAYLOAD)
 
 
 if __name__ == "__main__":
