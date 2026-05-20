@@ -10,131 +10,43 @@ COLORS = {
     "negative": "#16a34a",
 }
 
-POSITIVE_PATTERNS = [
-    r"\bpas\b",
-    r"\bplacenta\s+(?:accreta|increta|percreta)\b",
-    r"\bврастан\w*",
-    r"\bинвази\w*",
-    r"\bпрорастан\w*",
-    r"\bлакун\w*",
-    r"\bретроплацентарн\w*",
-    r"\bсосуд\w*",
-    r"\bгиперваскуляризаци\w*",
-    r"\bистонч\w*",
-    r"\bмиометр\w*\s+не\s+прослеж",
-    r"\bвовлеч\w*",
-    r"\bмочев\w*\s+пузыр",
-    r"\bперекрывает\s+внутренн\w*\s+зев",
-    r"\bпередн\w*\s+стенк",
-]
+POLARITY_PRIORITY = {
+    "uncertain": 3,
+    "positive": 2,
+    "negative": 1,
+}
 
-UNCERTAIN_PATTERNS = [
-    r"\bнельзя\s+исключ",
-    r"\bне\s+исключ",
-    r"\bвозможн",
-    r"\bчастично\s+не\s+дифференц",
-    r"\bподозр",
-    r"\bсомнитель",
-]
-
-NEGATIVE_PATTERNS = [
-    r"\bнет\b",
-    r"\bне\s+выяв\w*",
-    r"\bне\s+получен\w*",
-    r"\bне\s+определя\w*",
-    r"\bне\s+подтвержд\w*",
-    r"\bсохранен\w*",
-    r"\bбез\s+убедительн\w*\s+данн\w*",
-    r"\bбез\s+достоверн\w*",
-    r"\bпризнак\w*\b.{0,80}\bнет\b",
-    r"\bданн\w*\s+за\b.{0,80}\bнет\b",
-]
+METHOD_PRIORITY = {
+    "exact": 3,
+    "normalized": 2,
+    "token-overlap": 1,
+}
 
 WORD_RE = re.compile(r"[a-zа-я0-9]+", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
-class SentenceSpan:
-    text: str
+class EvidenceItem:
+    index: int
+    polarity: str
+    phrase: str
+
+
+@dataclass(frozen=True)
+class EvidenceMatch:
+    evidence_index: int
+    polarity: str
+    phrase: str
     start: int
     end: int
-    polarity: str | None
+    method: str
 
 
-def normalize_text(text: str) -> str:
-    return " ".join(str(text).lower().replace("ё", "е").split())
-
-
-def normalized_words(text: str) -> set[str]:
-    normalized = normalize_text(text)
-    return {word for word in WORD_RE.findall(normalized) if len(word) >= 4}
-
-
-def has_any_pattern(text: str, patterns: list[str]) -> bool:
-    normalized = normalize_text(text)
-    return any(re.search(pattern, normalized) for pattern in patterns)
-
-
-def split_report_sentences(report_text: str) -> list[SentenceSpan]:
-    spans: list[SentenceSpan] = []
-    start = 0
-
-    boundary_pattern = re.compile(r"(?<=[.!?])\s+|\n+|(?=однако\b)")
-
-    for match in boundary_pattern.finditer(report_text):
-        end = match.start()
-        add_sentence_span(report_text, start, end, spans)
-        start = match.end()
-
-    add_sentence_span(report_text, start, len(report_text), spans)
-
-    return spans
-
-
-def add_sentence_span(
-    report_text: str,
-    start: int,
-    end: int,
-    spans: list[SentenceSpan],
-) -> None:
-    while start < end and report_text[start].isspace():
-        start += 1
-
-    while end > start and report_text[end - 1].isspace():
-        end -= 1
-
-    if start >= end:
-        return
-
-    text = report_text[start:end]
-    spans.append(
-        SentenceSpan(
-            text=text,
-            start=start,
-            end=end,
-            polarity=classify_sentence(text),
-        )
-    )
-
-
-def classify_sentence(sentence: str) -> str | None:
-    has_positive = has_any_pattern(sentence, POSITIVE_PATTERNS)
-    has_uncertain = has_any_pattern(sentence, UNCERTAIN_PATTERNS)
-    has_negative = has_any_pattern(sentence, NEGATIVE_PATTERNS)
-
-    if has_negative and (has_positive or has_uncertain):
-        return "negative"
-
-    if has_uncertain:
-        return "uncertain"
-
-    if has_positive:
-        return "positive"
-
-    if has_negative:
-        return "negative"
-
-    return None
+@dataclass(frozen=True)
+class Token:
+    value: str
+    start: int
+    end: int
 
 
 def as_list(value: Any) -> list[str]:
@@ -152,9 +64,54 @@ def as_list(value: Any) -> list[str]:
     return [str(value)]
 
 
-def collect_evidence(result: dict[str, Any]) -> list[dict[str, str]]:
+def normalize_text(text: str) -> str:
+    return " ".join(str(text).lower().replace("ё", "е").split())
+
+
+def normalize_with_index_map(text: str) -> tuple[str, list[int]]:
+    normalized_chars = []
+    index_map = []
+    previous_was_space = False
+
+    for index, char in enumerate(text):
+        normalized_char = char.lower().replace("ё", "е")
+
+        if normalized_char.isspace():
+            if previous_was_space:
+                continue
+
+            normalized_chars.append(" ")
+            index_map.append(index)
+            previous_was_space = True
+            continue
+
+        normalized_chars.append(normalized_char)
+        index_map.append(index)
+        previous_was_space = False
+
+    return "".join(normalized_chars), index_map
+
+
+def normalize_token(token: str) -> str:
+    return token.lower().replace("ё", "е")
+
+
+def tokenize(text: str) -> list[Token]:
+    tokens = []
+
+    for match in WORD_RE.finditer(text):
+        value = normalize_token(match.group(0))
+        if len(value) < 4:
+            continue
+
+        tokens.append(Token(value=value, start=match.start(), end=match.end()))
+
+    return tokens
+
+
+def collect_evidence(result: dict[str, Any]) -> list[EvidenceItem]:
     evidence = result.get("evidence", {}) if isinstance(result, dict) else {}
-    items: list[dict[str, str]] = []
+    items: list[EvidenceItem] = []
 
     for polarity, key in [
         ("positive", "positive_findings"),
@@ -162,118 +119,238 @@ def collect_evidence(result: dict[str, Any]) -> list[dict[str, str]]:
         ("negative", "negative_findings"),
     ]:
         for phrase in as_list(evidence.get(key)):
-            items.append({"polarity": polarity, "phrase": phrase})
+            items.append(
+                EvidenceItem(
+                    index=len(items),
+                    polarity=polarity,
+                    phrase=phrase,
+                )
+            )
 
     return items
 
 
-def evidence_matches_sentence(evidence_phrase: str, sentence: str) -> bool:
-    normalized_phrase = normalize_text(evidence_phrase)
-    normalized_sentence = normalize_text(sentence)
-
-    if not normalized_phrase:
-        return False
-
-    if normalized_phrase in normalized_sentence:
-        return True
-
-    phrase_words = normalized_words(evidence_phrase)
-    sentence_words = normalized_words(sentence)
-
-    if not phrase_words:
-        return False
-
-    overlap = len(phrase_words & sentence_words)
-    required_overlap = min(3, len(phrase_words))
-
-    return overlap >= required_overlap and overlap / len(phrase_words) >= 0.45
+def find_exact_ranges(report_text: str, phrase: str) -> list[tuple[int, int]]:
+    return [
+        (match.start(), match.end())
+        for match in re.finditer(re.escape(phrase), report_text)
+    ]
 
 
-def sentence_polarity_from_evidence(
-    sentence: SentenceSpan,
-    evidence_items: list[dict[str, str]],
-) -> tuple[str | None, set[int]]:
-    matched_indices = set()
-    matched_polarities = []
+def find_normalized_ranges(report_text: str, phrase: str) -> list[tuple[int, int]]:
+    normalized_report, index_map = normalize_with_index_map(report_text)
+    normalized_phrase = normalize_text(phrase)
 
-    for index, item in enumerate(evidence_items):
-        if evidence_matches_sentence(item["phrase"], sentence.text):
-            matched_indices.add(index)
-            matched_polarities.append(item["polarity"])
+    if not normalized_phrase or not index_map:
+        return []
 
-    if "negative" in matched_polarities and has_any_pattern(
-        sentence.text,
-        NEGATIVE_PATTERNS,
-    ):
-        return "negative", matched_indices
+    ranges = []
+    start = 0
 
-    if "uncertain" in matched_polarities:
-        return "uncertain", matched_indices
+    while True:
+        match_start = normalized_report.find(normalized_phrase, start)
+        if match_start == -1:
+            break
 
-    if "positive" in matched_polarities:
-        if has_any_pattern(sentence.text, NEGATIVE_PATTERNS):
-            return "negative", matched_indices
-        return "positive", matched_indices
+        match_end = match_start + len(normalized_phrase) - 1
+        original_start = index_map[match_start]
+        original_end = index_map[match_end] + 1
+        ranges.append((original_start, original_end))
+        start = match_start + 1
 
-    return sentence.polarity, matched_indices
+    return ranges
+
+
+def find_token_overlap_ranges(report_text: str, phrase: str) -> list[tuple[int, int]]:
+    if ":" in phrase:
+        return []
+
+    report_tokens = tokenize(report_text)
+    phrase_tokens = tokenize(phrase)
+    phrase_values = {token.value for token in phrase_tokens}
+
+    if len(phrase_values) < 3:
+        return []
+
+    required_overlap = len(phrase_values) if len(phrase_values) <= 4 else 3
+    max_window = max(8, min(len(phrase_values) + 4, 14))
+    ranges = []
+
+    for left in range(len(report_tokens)):
+        seen = set()
+        first_matched_start = None
+        right_limit = min(len(report_tokens), left + max_window)
+
+        for right in range(left, right_limit):
+            token = report_tokens[right]
+
+            if token.value in phrase_values:
+                seen.add(token.value)
+                if first_matched_start is None:
+                    first_matched_start = token.start
+
+            overlap = len(seen)
+            if overlap < required_overlap:
+                continue
+
+            if overlap / len(phrase_values) < 0.6:
+                continue
+
+            original_start = first_matched_start or token.start
+            original_end = token.end
+            matched_text = report_text[original_start:original_end]
+
+            if "\n" in matched_text or "." in matched_text:
+                continue
+
+            ranges.append((original_start, original_end))
+            break
+
+    return ranges
+
+
+def evidence_phrase_variants(phrase: str, polarity: str) -> list[str]:
+    parts = [
+        part.strip(" ,.;")
+        for part in re.split(r"\bоднако\b", phrase, flags=re.IGNORECASE)
+        if part.strip(" ,.;")
+    ]
+
+    if len(parts) > 1:
+        if polarity == "uncertain":
+            return [parts[0]]
+
+        return parts
+
+    return [phrase]
+
+
+def find_evidence_ranges(
+    report_text: str,
+    phrase: str,
+    polarity: str,
+) -> list[tuple[int, int, str]]:
+    ranges_with_methods: list[tuple[int, int, str]] = []
+
+    for variant in evidence_phrase_variants(phrase, polarity):
+        exact_ranges = find_exact_ranges(report_text, variant)
+        if exact_ranges:
+            ranges_with_methods.extend(
+                (start, end, "exact") for start, end in exact_ranges
+            )
+            continue
+
+        normalized_ranges = find_normalized_ranges(report_text, variant)
+        if normalized_ranges:
+            ranges_with_methods.extend(
+                (start, end, "normalized") for start, end in normalized_ranges
+            )
+            continue
+
+        ranges_with_methods.extend(
+            (start, end, "token-overlap")
+            for start, end in find_token_overlap_ranges(report_text, variant)
+        )
+
+    return ranges_with_methods
+
+
+def ranges_overlap(left: EvidenceMatch, right: EvidenceMatch) -> bool:
+    return left.start < right.end and left.end > right.start
+
+
+def select_non_overlapping_matches(
+    candidates: list[EvidenceMatch],
+) -> list[EvidenceMatch]:
+    selected: list[EvidenceMatch] = []
+
+    sorted_candidates = sorted(
+        candidates,
+        key=lambda match: (
+            -POLARITY_PRIORITY[match.polarity],
+            -METHOD_PRIORITY[match.method],
+            -(match.end - match.start),
+            match.start,
+        ),
+    )
+
+    for candidate in sorted_candidates:
+        if any(ranges_overlap(candidate, existing) for existing in selected):
+            continue
+
+        selected.append(candidate)
+
+    return sorted(selected, key=lambda match: match.start)
 
 
 def build_report_highlighting(
     report_text: str,
     result: dict[str, Any],
 ) -> dict[str, Any]:
-    sentences = split_report_sentences(report_text)
     evidence_items = collect_evidence(result)
-    matched_evidence_indices: set[int] = set()
-    highlighted_ranges: list[tuple[int, int, str]] = []
-    counts = {"positive": 0, "uncertain": 0, "negative": 0}
+    candidates: list[EvidenceMatch] = []
+    found_evidence_indices = set()
 
-    for sentence in sentences:
-        polarity, matched_indices = sentence_polarity_from_evidence(
-            sentence,
-            evidence_items,
-        )
-        matched_evidence_indices.update(matched_indices)
+    for item in evidence_items:
+        ranges = find_evidence_ranges(report_text, item.phrase, item.polarity)
 
-        if not polarity:
-            continue
+        if ranges:
+            found_evidence_indices.add(item.index)
 
-        counts[polarity] += 1
-        highlighted_ranges.append((sentence.start, sentence.end, polarity))
+        for start, end, method in ranges:
+            candidates.append(
+                EvidenceMatch(
+                    evidence_index=item.index,
+                    polarity=item.polarity,
+                    phrase=item.phrase,
+                    start=start,
+                    end=end,
+                    method=method,
+                )
+            )
 
+    selected_matches = select_non_overlapping_matches(candidates)
     unmatched_evidence = [
-        item["phrase"]
-        for index, item in enumerate(evidence_items)
-        if index not in matched_evidence_indices
+        item.phrase
+        for item in evidence_items
+        if item.index not in found_evidence_indices
     ]
 
     return {
-        "html": render_highlighted_report(report_text, highlighted_ranges),
-        "counts": counts,
+        "html": render_highlighted_report(report_text, selected_matches),
+        "matches": [
+            {
+                "polarity": match.polarity,
+                "phrase": match.phrase,
+                "start": match.start,
+                "end": match.end,
+                "method": match.method,
+            }
+            for match in selected_matches
+        ],
         "unmatched_evidence": unmatched_evidence,
-        "sentences": sentences,
     }
 
 
 def render_highlighted_report(
     report_text: str,
-    highlighted_ranges: list[tuple[int, int, str]],
+    matches: list[EvidenceMatch],
 ) -> str:
     parts = []
     cursor = 0
 
-    for start, end, polarity in sorted(highlighted_ranges, key=lambda item: item[0]):
-        color = COLORS[polarity]
-        parts.append(html.escape(report_text[cursor:start]))
+    for match in matches:
+        color = COLORS[match.polarity]
+        parts.append(html.escape(report_text[cursor:match.start]))
         parts.append(
             (
                 f'<span style="background-color: {color}33; '
                 f'border-bottom: 2px solid {color}; '
                 f'padding: 1px 2px; border-radius: 3px;">'
-                f'{html.escape(report_text[start:end])}</span>'
+                f'{html.escape(report_text[match.start:match.end])}</span>'
             )
         )
-        cursor = end
+        cursor = match.end
 
     parts.append(html.escape(report_text[cursor:]))
     return "".join(parts)

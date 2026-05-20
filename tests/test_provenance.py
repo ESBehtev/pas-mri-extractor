@@ -1,11 +1,8 @@
+import html
 import unittest
 
 from app.examples import STREAMLIT_EXAMPLES
-from app.provenance import (
-    build_report_highlighting,
-    evidence_matches_sentence,
-    split_report_sentences,
-)
+from app.provenance import build_report_highlighting
 from pas_mri_extractor.rules import rule_extract_features
 from pas_mri_extractor.scoring import normalize_mri_result
 
@@ -18,78 +15,133 @@ def example_by_name(name: str) -> dict:
     raise AssertionError(f"Example not found: {name}")
 
 
-def provenance_for_example(name: str) -> dict:
+def provenance_for_example(name: str) -> tuple[dict, str]:
     example = example_by_name(name)
     extraction = rule_extract_features(example["report_text"])
     result = normalize_mri_result(extraction)
 
-    return build_report_highlighting(example["report_text"], result.model_dump())
+    return build_report_highlighting(example["report_text"], result.model_dump()), example[
+        "report_text"
+    ]
 
 
-def sentence_polarities(report_text: str) -> dict[str, str | None]:
-    return {
-        sentence.text: sentence.polarity
-        for sentence in split_report_sentences(report_text)
-    }
+def matched_texts(provenance: dict, report_text: str, polarity: str | None = None) -> list[str]:
+    matches = provenance["matches"]
+    if polarity:
+        matches = [match for match in matches if match["polarity"] == polarity]
+
+    return [report_text[match["start"] : match["end"]].lower() for match in matches]
 
 
 class ProvenanceTest(unittest.TestCase):
-    def test_token_overlap_matches_evidence_to_sentence(self) -> None:
-        self.assertTrue(
-            evidence_matches_sentence(
-                "достоверной инвазии стенки мочевого пузыря",
-                "По передней стенке матки имеется участок достоверной инвазии "
-                "стенки мочевого пузыря.",
-            )
+    def test_full_report_is_rendered_and_line_breaks_are_preserved(self) -> None:
+        report = "Первая строка <unsafe>\nВторая строка без evidence."
+        result = {
+            "evidence": {
+                "positive_findings": [],
+                "uncertain_findings": [],
+                "negative_findings": [],
+            }
+        }
+
+        provenance = build_report_highlighting(report, result)
+
+        self.assertEqual(provenance["html"], html.escape(report))
+        self.assertIn("\n", provenance["html"])
+        self.assertEqual(provenance["matches"], [])
+        self.assertEqual(provenance["unmatched_evidence"], [])
+        self.assertNotIn("counts", provenance)
+
+    def test_unmatched_evidence_is_stable(self) -> None:
+        provenance = build_report_highlighting(
+            "Плацента по задней стенке.",
+            {
+                "evidence": {
+                    "positive_findings": ["placenta increta"],
+                    "uncertain_findings": [],
+                    "negative_findings": [],
+                }
+            },
         )
 
-    def test_negative_phrases_are_not_positive_sentences(self) -> None:
-        negative_examples = [
+        self.assertEqual(provenance["matches"], [])
+        self.assertEqual(provenance["unmatched_evidence"], ["placenta increta"])
+
+    def test_overlap_priority_is_uncertain_positive_negative(self) -> None:
+        report = "Нельзя исключить вовлечение мочевого пузыря."
+        result = {
+            "evidence": {
+                "positive_findings": ["вовлечение мочевого пузыря"],
+                "uncertain_findings": [
+                    "Нельзя исключить вовлечение мочевого пузыря"
+                ],
+                "negative_findings": ["вовлечение мочевого пузыря"],
+            }
+        }
+
+        provenance = build_report_highlighting(report, result)
+
+        self.assertEqual(len(provenance["matches"]), 1)
+        self.assertEqual(provenance["matches"][0]["polarity"], "uncertain")
+
+    def test_token_overlap_is_conservative_fallback(self) -> None:
+        report = "Определяется достоверная инвазия стенки мочевого пузыря."
+        result = {
+            "evidence": {
+                "positive_findings": [
+                    "достоверной инвазии стенки мочевого пузыря"
+                ],
+                "uncertain_findings": [],
+                "negative_findings": [],
+            }
+        }
+
+        provenance = build_report_highlighting(report, result)
+
+        self.assertEqual(len(provenance["matches"]), 1)
+        self.assertEqual(provenance["matches"][0]["method"], "token-overlap")
+        self.assertIn("стенки мочевого пузыря", provenance["html"].lower())
+
+    def test_no_pas_examples_have_no_accidental_positive_pas_highlight(self) -> None:
+        for name in [
             "Без PAS — простой случай",
             "Без PAS — сложная отрицательная формулировка",
-        ]
+        ]:
+            with self.subTest(example=name):
+                provenance, report_text = provenance_for_example(name)
+                positive_text = "\n".join(matched_texts(provenance, report_text, "positive"))
 
-        for name in negative_examples:
-            example = example_by_name(name)
-            polarities = sentence_polarities(example["report_text"])
+                self.assertNotIn("placenta increta", positive_text)
+                self.assertNotIn("инвазии мочевого пузыря", positive_text)
+                self.assertNotIn("врастание плаценты", positive_text)
 
-            for sentence, polarity in polarities.items():
-                normalized = sentence.lower().replace("ё", "е")
-                if (
-                    "не выяв" in normalized
-                    or "нет" in normalized
-                    or "не определяется" in normalized
-                    or "не подтверждается" in normalized
-                    or "не получено" in normalized
-                ):
-                    with self.subTest(example=name, sentence=sentence):
-                        self.assertNotEqual(polarity, "positive")
+    def test_increta_easy_highlights_only_evidence_phrases(self) -> None:
+        provenance, report_text = provenance_for_example("Increta — простой случай")
+        highlights = "\n".join(matched_texts(provenance, report_text))
 
-    def test_increta_easy_highlights_core_positive_findings(self) -> None:
-        provenance = provenance_for_example("Increta — простой случай")
-        html = provenance["html"].lower()
+        self.assertIn("множественные лакуны", highlights)
+        self.assertIn("ретроплацентарные сосуды расширены", highlights)
+        self.assertIn("истончение миометрия", highlights)
+        self.assertIn("placenta increta", highlights)
+        self.assertNotIn("состояние после двух кесаревых сечений", highlights)
 
-        self.assertGreaterEqual(provenance["counts"]["positive"], 4)
-        self.assertIn("множественные лакуны", html)
-        self.assertIn("ретроплацентарные сосуды расширены", html)
-        self.assertIn("истончение миометрия", html)
-        self.assertIn("placenta increta", html)
-
-    def test_hard_increta_splits_uncertain_and_negative_bladder_context(self) -> None:
-        provenance = provenance_for_example(
+    def test_hard_increta_highlights_evidence_without_sentence_inference(self) -> None:
+        provenance, report_text = provenance_for_example(
             "Increta — сложный случай с возможным вовлечением"
         )
-        html = provenance["html"].lower()
+        uncertain_text = "\n".join(matched_texts(provenance, report_text, "uncertain"))
+        negative_text = "\n".join(matched_texts(provenance, report_text, "negative"))
 
-        self.assertGreaterEqual(provenance["counts"]["uncertain"], 1)
-        self.assertGreaterEqual(provenance["counts"]["negative"], 1)
-        self.assertIn("маточно-пузырное пространство частично не дифференцируется", html)
+        self.assertIn(
+            "маточно-пузырное пространство частично не дифференцируется",
+            uncertain_text,
+        )
         self.assertIn(
             "достоверных признаков инвазии стенки мочевого пузыря не получено",
-            html,
+            negative_text,
         )
 
-    def test_percreta_highlights_bladder_wall_invasion(self) -> None:
+    def test_percreta_examples_highlight_bladder_wall_invasion(self) -> None:
         for name, phrase in [
             (
                 "Percreta — простой случай",
@@ -101,10 +153,12 @@ class ProvenanceTest(unittest.TestCase):
             ),
         ]:
             with self.subTest(example=name):
-                provenance = provenance_for_example(name)
+                provenance, report_text = provenance_for_example(name)
+                positive_text = "\n".join(
+                    matched_texts(provenance, report_text, "positive")
+                )
 
-                self.assertGreaterEqual(provenance["counts"]["positive"], 1)
-                self.assertIn(phrase, provenance["html"].lower())
+                self.assertIn(phrase, positive_text)
 
 
 if __name__ == "__main__":
