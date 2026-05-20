@@ -6,12 +6,15 @@ LLM возвращает только:
 - extracted_features
 - evidence
 
-Скоринг и рекомендации добавляются кодом после адаптации результата.
+Скоринг и рекомендации добавляются кодом после валидации результата.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+CURRENT_SCHEMA_VERSION = "1.0"
 
 
 InvasionType = Literal["none", "accreta", "increta", "percreta"]
@@ -70,10 +73,28 @@ class Evidence(BaseModel):
     negative_findings: list[str] = Field(default_factory=list)
 
 
+def reject_legacy_features_payload(data: Any) -> Any:
+    if isinstance(data, dict) and "features" in data:
+        raise ValueError(
+            "Legacy flat 'features' format is not supported. "
+            "Expected canonical nested 'extracted_features'."
+        )
+
+    return data
+
+
 class MRIExtractionResult(BaseModel):
-    case_info: CaseInfo = Field(default_factory=CaseInfo)
-    extracted_features: ExtractedFeatures = Field(default_factory=ExtractedFeatures)
-    evidence: Evidence = Field(default_factory=Evidence)
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = CURRENT_SCHEMA_VERSION
+    case_info: CaseInfo
+    extracted_features: ExtractedFeatures
+    evidence: Evidence
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_features(cls, data: object) -> object:
+        return reject_legacy_features_payload(data)
 
 
 class ScoreResult(BaseModel):
@@ -97,7 +118,7 @@ class Recommendation(BaseModel):
 
 
 class FullMRIResult(MRIExtractionResult):
-    score: ScoreResult | None = None
-    predicted_risks: PredictedRisks | None = None
-    recommendation: Recommendation | None = None
-    computed_rationale: str | None = None
+    score: ScoreResult
+    predicted_risks: PredictedRisks
+    recommendation: Recommendation
+    computed_rationale: str

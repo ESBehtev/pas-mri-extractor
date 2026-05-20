@@ -205,9 +205,10 @@ Qwen/Qwen2.5-1.5B-Instruct
 
 Результат содержит:
 
+- версию JSON-схемы,
+- информацию о случае,
 - извлечённые MRI-признаки,
-- clinical summary,
-- clinical rationale,
+- evidence с положительными, неопределёнными и отрицательными находками,
 - риск-группу,
 - оценку кровопотери,
 - вероятность сосудистого вмешательства,
@@ -217,13 +218,58 @@ Qwen/Qwen2.5-1.5B-Instruct
 
 ```json
 {
-  "features": {
-    "invasion_type": "increta",
-    "placenta_previa": "present"
+  "schema_version": "1.0",
+  "case_info": {
+    "gestational_week": 34,
+    "previous_cs_count": 2
+  },
+  "extracted_features": {
+    "invasion": {
+      "type": "increta",
+      "confidence": "probable"
+    },
+    "anatomy": {
+      "bladder_involvement": "possible",
+      "parametrium_involvement": "absent",
+      "posterior_wall_involvement": "absent"
+    },
+    "placenta_location": {
+      "placenta_previa": "present",
+      "anterior_placenta": "present"
+    },
+    "mri_signs": {
+      "retroplacental_vessels": "present",
+      "lacunae": "present",
+      "uterine_wall_thinning": "present",
+      "uterine_hernia_or_bulging": "absent"
+    },
+    "clinical_context": {
+      "preoperative_bleeding": "absent"
+    }
+  },
+  "evidence": {
+    "positive_findings": [],
+    "uncertain_findings": [],
+    "negative_findings": []
   },
   "score": {
-    "risk_group": "high"
-  }
+    "clinical_score": 9,
+    "risk_group": "moderate",
+    "red_flag": 0,
+    "score_reasons": "increta: +3; вероятное/возможное врастание: +1"
+  },
+  "predicted_risks": {
+    "massive_blood_loss_over_1500_ml_percent": 35,
+    "estimated_blood_loss_ml_range": "1000–1500 мл",
+    "vascular_intervention_percent": 25,
+    "bladder_involvement_percent": 15,
+    "risk_summary_text": "Риск массивной кровопотери >1500 мл: 35%; прогнозируемый объём кровопотери: 1000–1500 мл"
+  },
+  "recommendation": {
+    "readiness_level": "2",
+    "readiness_text": "Уровень 2: умеренный риск, усиленная подготовка."
+  },
+  "computed_rationale": "Уровень готовности выбран на основании признаков: increta."
 }
 ```
 
@@ -232,7 +278,7 @@ Qwen/Qwen2.5-1.5B-Instruct
 # Ограничения текущей версии
 
 - Маленькие модели иногда генерируют нестабильный JSON
-- Качество clinical_summary зависит от размера модели
+- Качество evidence зависит от размера модели
 - Rule-based extraction реализован как baseline/fallback
 - Пока поддерживается только single-case inference
 

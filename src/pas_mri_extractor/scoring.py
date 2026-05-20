@@ -7,7 +7,11 @@
 
 from copy import deepcopy
 
-from .schemas import FullMRIResult, MRIExtractionResult
+from .schemas import (
+    FullMRIResult,
+    MRIExtractionResult,
+    reject_legacy_features_payload,
+)
 
 from .config import load_config
 score_cfg = load_config("risk_score.yaml")
@@ -16,7 +20,12 @@ def normalize_mri_result(result: MRIExtractionResult | dict) -> FullMRIResult:
     if isinstance(result, MRIExtractionResult):
         result_dict = result.model_dump()
     else:
-        result_dict = deepcopy(result)
+        result_dict = reject_legacy_features_payload(deepcopy(result))
+
+    if "extracted_features" not in result_dict:
+        raise ValueError(
+            "Result is missing required canonical 'extracted_features' field."
+        )
 
     case_info = result_dict.get("case_info", {})
     extracted = result_dict.get("extracted_features", {})

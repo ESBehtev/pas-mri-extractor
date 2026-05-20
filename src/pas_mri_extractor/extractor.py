@@ -32,20 +32,6 @@ STATUS_VALUES = {
     "present",
 }
 
-STATUS_FIELDS = {
-    "bladder_involvement",
-    "parametrium_involvement",
-    "posterior_wall_involvement",
-    "placenta_previa",
-    "anterior_placenta",
-    "retroplacental_vessels",
-    "lacunae",
-    "uterine_wall_thinning",
-    "uterine_hernia_or_bulging",
-    "preoperative_bleeding",
-}
-
-
 def normalize_invasion_type(value: object) -> str:
     if value is None:
         return "none"
@@ -166,51 +152,7 @@ def normalize_status(value: object) -> str:
 def repair_common_model_errors(parsed: dict) -> dict:
     """
     Чинит частые ошибки LLM до Pydantic-валидации.
-
-    Поддерживает оба возможных формата:
-    1. старый плоский parsed["features"]
-    2. новый вложенный parsed["extracted_features"]
     """
-
-    features = parsed.get("features", {})
-
-    invasion_type = features.get("invasion_type")
-
-    if str(invasion_type).lower() in CONFIDENCE_VALUES:
-        text_blob = " ".join(
-            [
-                str(features),
-                str(parsed.get("clinical_summary", "")),
-                str(parsed.get("clinical_rationale", "")),
-            ]
-        ).lower()
-
-        features["invasion_confidence"] = str(invasion_type).lower()
-
-        if "percreta" in text_blob:
-            features["invasion_type"] = "percreta"
-        elif "increta" in text_blob:
-            features["invasion_type"] = "increta"
-        elif "accreta" in text_blob:
-            features["invasion_type"] = "accreta"
-        else:
-            features["invasion_type"] = "none"
-
-    if "invasion_type" in features:
-        features["invasion_type"] = normalize_invasion_type(
-            features.get("invasion_type")
-        )
-
-    if "invasion_confidence" in features:
-        features["invasion_confidence"] = normalize_confidence(
-            features.get("invasion_confidence")
-        )
-
-    for field in STATUS_FIELDS:
-        if field in features:
-            features[field] = normalize_status(features.get(field))
-
-    parsed["features"] = features
 
     extracted_features = parsed.get("extracted_features", {})
 
@@ -278,81 +220,19 @@ def repair_common_model_errors(parsed: dict) -> dict:
     return parsed
 
 
-def trim_text_fields(parsed: dict, max_chars: int = 350) -> dict:
-    for field in [
-        "clinical_summary",
-        "clinical_rationale",
-    ]:
-        value = parsed.get(field)
-
-        if isinstance(value, str) and len(value) > max_chars:
-            parsed[field] = value[:max_chars].rstrip() + "..."
-
-    features = parsed.get("features", {})
-    explanation = features.get("short_explanation")
-
-    if isinstance(explanation, str) and len(explanation) > max_chars:
-        features["short_explanation"] = explanation[:max_chars].rstrip() + "..."
-
-    parsed["features"] = features
-
-    return parsed
-
-
-def rebuild_short_explanation(parsed: dict) -> dict:
-    features = parsed.get("features", {})
-
-    found = []
-
-    invasion_type = features.get("invasion_type")
-    if invasion_type and invasion_type != "none":
-        found.append(f"тип врастания: {invasion_type}")
-
-    if features.get("invasion_confidence") not in [None, "absent"]:
-        found.append(f"уверенность: {features['invasion_confidence']}")
-
-    labels = {
-        "bladder_involvement": "возможное вовлечение мочевого пузыря",
-        "parametrium_involvement": "вовлечение параметрия",
-        "posterior_wall_involvement": "вовлечение задней стенки",
-        "placenta_previa": "предлежание плаценты",
-        "anterior_placenta": "плацента по передней стенке",
-        "retroplacental_vessels": "расширенные/ретроплацентарные сосуды",
-        "lacunae": "плацентарные лакуны",
-        "uterine_wall_thinning": "истончение миометрия/рубца",
-        "uterine_hernia_or_bulging": "выбухание/грыжевидная деформация",
-        "preoperative_bleeding": "кровотечение",
-    }
-
-    for key, label in labels.items():
-        value = features.get(key)
-
-        if value == "present":
-            found.append(label)
-        elif value in ["possible", "probable"]:
-            found.append(f"{label}: {value}")
-
-    if features.get("previous_cs_count") is not None:
-        found.append(f"КС: {features['previous_cs_count']}")
-
-    if features.get("gestational_week") is not None:
-        found.append(f"{features['gestational_week']} недель")
-
-    features["short_explanation"] = (
-        "; ".join(found)
-        if found
-        else "Значимых признаков врастания по тексту не выделено."
-    )
-
-    parsed["features"] = features
-
-    return parsed
-
-
 def postprocess_extraction(parsed: dict) -> dict:
+    if "features" in parsed:
+        raise ValueError(
+            "Model output uses legacy flat 'features' format. "
+            "Expected canonical nested 'extracted_features'."
+        )
+
+    if "extracted_features" not in parsed:
+        raise ValueError(
+            "Model output is missing required canonical 'extracted_features' field."
+        )
+
     parsed = repair_common_model_errors(parsed)
-    parsed = rebuild_short_explanation(parsed)
-    parsed = trim_text_fields(parsed)
 
     return parsed
 
