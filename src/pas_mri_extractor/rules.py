@@ -38,6 +38,32 @@ UNCERTAIN_PATTERNS = [
     r"\bвероят",
 ]
 
+PREVIOUS_CS_COUNT_VALUES = {
+    "1": 1,
+    "один": 1,
+    "одна": 1,
+    "одного": 1,
+    "одной": 1,
+    "2": 2,
+    "две": 2,
+    "два": 2,
+    "двух": 2,
+    "3": 3,
+    "три": 3,
+    "трех": 3,
+}
+
+PREVIOUS_CS_COUNT_TOKEN = (
+    r"(?P<count>1|2|3|один|одна|одного|одной|две|два|двух|три|трех)"
+)
+
+PREVIOUS_CS_COUNT_PATTERNS = [
+    rf"\bпосле\s+{PREVIOUS_CS_COUNT_TOKEN}\s*(?:кс|кесарев\w*\s+сечен\w*)",
+    rf"\bанамнезе\s+{PREVIOUS_CS_COUNT_TOKEN}\s*(?:кс|кесарев\w*\s+сечен\w*)",
+    rf"\bрубец\w*\s+на\s+матк\w*.{{0,40}}\bпосле\s+{PREVIOUS_CS_COUNT_TOKEN}\s*(?:кс|кесарев\w*\s+сечен\w*)",
+    rf"\b{PREVIOUS_CS_COUNT_TOKEN}\s*(?:кс|кесарев\w*\s+сечен\w*)",
+]
+
 NEGATIVE_EVIDENCE_LABELS = {
     "bladder_involvement": "отрицательный контекст: вовлечение мочевого пузыря",
     "parametrium_involvement": "отрицательный контекст: вовлечение параметрия",
@@ -125,6 +151,17 @@ def add_negative_evidence(features: dict[str, Any], feature_name: str) -> None:
         negative_findings.append(label)
 
 
+def parse_previous_cs_count(text: str) -> int | None:
+    for pattern in PREVIOUS_CS_COUNT_PATTERNS:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+
+        return PREVIOUS_CS_COUNT_VALUES.get(match.group("count"))
+
+    return None
+
+
 def extract_numeric_features(
     text: str,
     config: dict[str, Any],
@@ -142,6 +179,10 @@ def extract_numeric_features(
             value = int(value)
 
         features[feature_name] = value
+
+    previous_cs_count = parse_previous_cs_count(text)
+    if previous_cs_count is not None:
+        features["previous_cs_count"] = previous_cs_count
 
 
 def extract_regex_features(
