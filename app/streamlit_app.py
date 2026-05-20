@@ -19,6 +19,8 @@ from state import (
 
 from pas_mri_extractor.pipeline import extract_features, extract_features_dual
 from pas_mri_extractor.pipeline import get_cached_model
+from pas_mri_extractor.config import config_overrides
+from pas_mri_extractor.scoring import clear_score_config_cache
 from pas_mri_extractor.report_sections import split_report_sections
 
 
@@ -146,18 +148,21 @@ with extract_tab:
 
         try:
             with st.spinner("Выполняется извлечение признаков..."):
-                if diagnostic_mode:
-                    current_dual_result = extract_features_dual(
-                        text=text,
-                        model_name=model_name,
-                    )
-                    current_result = current_dual_result["full"]
-                else:
-                    current_dual_result = None
-                    current_result = extract_features(
-                        text=text,
-                        model_name=model_name,
-                    )
+                session_overrides = st.session_state.get("config_overrides", {})
+                with config_overrides(session_overrides):
+                    clear_score_config_cache()
+                    if diagnostic_mode:
+                        current_dual_result = extract_features_dual(
+                            text=text,
+                            model_name=model_name,
+                        )
+                        current_result = current_dual_result["full"]
+                    else:
+                        current_dual_result = None
+                        current_result = extract_features(
+                            text=text,
+                            model_name=model_name,
+                        )
 
             save_extraction_result(
                 result=current_result,
@@ -174,6 +179,7 @@ with extract_tab:
             st.stop()
 
         finally:
+            clear_score_config_cache()
             set_running(False)
             clear_extraction_request()
 

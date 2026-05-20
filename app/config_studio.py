@@ -8,53 +8,37 @@ from pas_mri_extractor.scoring import clear_score_config_cache
 
 
 CONFIG_DIR = Path("configs")
-RUNTIME_CONFIG_DIR = Path("runtime_configs")
 
-CONFIG_FILES = {
-    "prompt.yaml": "prompt.local.yaml",
-    "risk_score.yaml": "risk_score.local.yaml",
-    "rules.yaml": "rules.local.yaml",
-}
+CONFIG_FILES = [
+    "prompt.yaml",
+    "risk_score.yaml",
+    "rules.yaml",
+]
 
 
 def get_source_path(config_name: str) -> Path:
     return CONFIG_DIR / config_name
 
 
-def get_local_path(config_name: str) -> Path:
-    return RUNTIME_CONFIG_DIR / CONFIG_FILES[config_name]
-
-
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def read_active_config_text(config_name: str) -> str:
-    local_path = get_local_path(config_name)
-    if local_path.exists():
-        return read_text(local_path)
+def validate_yaml(content: str) -> dict:
+    return yaml.safe_load(content) or {}
+
+
+def init_config_override_state() -> None:
+    st.session_state.setdefault("config_overrides", {})
+    st.session_state.setdefault("config_override_texts", {})
+
+
+def get_editor_text(config_name: str) -> str:
+    override_texts = st.session_state["config_override_texts"]
+    if config_name in override_texts:
+        return override_texts[config_name]
 
     return read_text(get_source_path(config_name))
-
-
-def validate_yaml(content: str) -> None:
-    yaml.safe_load(content)
-
-
-def save_local_override(config_name: str, content: str) -> Path:
-    validate_yaml(content)
-    RUNTIME_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
-    local_path = get_local_path(config_name)
-    local_path.write_text(content, encoding="utf-8")
-
-    return local_path
-
-
-def reset_local_override(config_name: str) -> None:
-    local_path = get_local_path(config_name)
-    if local_path.exists():
-        local_path.unlink()
 
 
 def clear_runtime_config_caches() -> None:
@@ -62,34 +46,50 @@ def clear_runtime_config_caches() -> None:
     clear_score_config_cache()
 
 
+def save_session_override(config_name: str, content: str) -> None:
+    parsed = validate_yaml(content)
+    st.session_state["config_overrides"][config_name] = parsed
+    st.session_state["config_override_texts"][config_name] = content
+    clear_runtime_config_caches()
+
+
+def reset_session_override(config_name: str) -> None:
+    st.session_state["config_overrides"].pop(config_name, None)
+    st.session_state["config_override_texts"].pop(config_name, None)
+    clear_runtime_config_caches()
+
+
 def render_config_studio() -> None:
+    init_config_override_state()
+
     st.subheader("Конфигурация")
     st.warning(
-        "Local overrides применяются при следующем extraction для "
-        "prompt.yaml, rules.yaml и risk_score.yaml."
+        "Override действует только в текущей Streamlit-сессии и не "
+        "записывается в git/файлы."
     )
+    st.caption("Старые runtime_configs/*.local.yaml игнорируются приложением.")
 
     config_name = st.selectbox(
         "Config file",
-        list(CONFIG_FILES),
+        CONFIG_FILES,
         key="config_studio_file",
     )
 
     source_path = get_source_path(config_name)
-    local_path = get_local_path(config_name)
     editor_key = f"config_editor_{config_name}"
     show_source_key = f"config_show_source_{config_name}"
 
     source_text = read_text(source_path)
 
     if editor_key not in st.session_state:
-        st.session_state[editor_key] = read_active_config_text(config_name)
+        st.session_state[editor_key] = get_editor_text(config_name)
 
     st.caption(f"Source: `{source_path}`")
-    if local_path.exists():
-        st.caption(f"Local override: `{local_path}`")
+
+    if config_name in st.session_state["config_overrides"]:
+        st.caption("Session override: active")
     else:
-        st.caption("Local override: none")
+        st.caption("Session override: none")
 
     action_col1, action_col2 = st.columns(2)
 
@@ -101,14 +101,10 @@ def render_config_studio() -> None:
             )
 
     with action_col2:
-        if st.button("Сбросить local override"):
-            reset_local_override(config_name)
-            clear_runtime_config_caches()
+        if st.button("Сбросить override сессии"):
+            reset_session_override(config_name)
             st.session_state[editor_key] = source_text
-            st.success(
-                "Local override сброшен. Изменение применится при следующем "
-                "extraction."
-            )
+            st.success("Session override сброшен.")
 
     if st.session_state.get(show_source_key, False):
         with st.expander("Исходный config", expanded=True):
@@ -120,12 +116,11 @@ def render_config_studio() -> None:
         height=520,
     )
 
-    if st.button("Сохранить как local override", type="primary"):
+    if st.button("Сохранить override на время сессии", type="primary"):
         try:
-            saved_path = save_local_override(config_name, content)
+            save_session_override(config_name, content)
         except yaml.YAMLError as error:
             st.error(f"YAML invalid: {error}")
         else:
-            clear_runtime_config_caches()
-            st.success(f"Local override сохранён: {saved_path}")
+            st.success("Session override сохранён.")
             st.warning("Override будет применён при следующем extraction.")

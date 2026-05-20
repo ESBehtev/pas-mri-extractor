@@ -4,8 +4,9 @@ from pathlib import Path
 
 import yaml
 
-from pas_mri_extractor.config import clear_config_cache
+from pas_mri_extractor.config import clear_config_cache, config_overrides, load_config
 from pas_mri_extractor import scoring
+from pas_mri_extractor.rules import rule_extract_features
 
 
 SCORING_PAYLOAD = {
@@ -53,7 +54,6 @@ class ScoringConfigTest(unittest.TestCase):
         self.original_local_content = None
         if self.local_path.exists():
             self.original_local_content = self.local_path.read_text(encoding="utf-8")
-            self.local_path.unlink()
 
         clear_config_cache()
         scoring.clear_score_config_cache()
@@ -69,7 +69,14 @@ class ScoringConfigTest(unittest.TestCase):
         clear_config_cache()
         scoring.clear_score_config_cache()
 
-    def test_scoring_uses_yaml_weights_thresholds_and_readiness(self) -> None:
+    def write_stale_runtime_override(self, config: dict) -> None:
+        self.local_path.parent.mkdir(parents=True, exist_ok=True)
+        self.local_path.write_text(
+            yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+
+    def test_scoring_uses_explicit_in_memory_override(self) -> None:
         test_cfg = copy.deepcopy(scoring.get_score_config())
         test_cfg["scoring"]["features"]["placenta_previa"]["present"] = 5
         test_cfg["risk_groups"] = {
@@ -81,15 +88,8 @@ class ScoringConfigTest(unittest.TestCase):
         test_cfg["readiness_levels"]["high"]["level"] = "Y"
         test_cfg["readiness_levels"]["high"]["text"] = "YAML readiness"
 
-        self.local_path.parent.mkdir(parents=True, exist_ok=True)
-        self.local_path.write_text(
-            yaml.safe_dump(test_cfg, allow_unicode=True, sort_keys=False),
-            encoding="utf-8",
-        )
-        clear_config_cache()
-        scoring.clear_score_config_cache()
-
-        result = scoring.normalize_mri_result(SCORING_PAYLOAD)
+        with config_overrides({"risk_score.yaml": test_cfg}):
+            result = scoring.normalize_mri_result(SCORING_PAYLOAD)
 
         self.assertEqual(result.score.clinical_score, 5)
         self.assertEqual(result.score.risk_group, "high")
@@ -107,14 +107,33 @@ class ScoringConfigTest(unittest.TestCase):
         self.assertEqual(result.score.risk_group, "low")
         self.assertEqual(result.recommendation.readiness_level, "1")
 
-    def test_invalid_local_override_does_not_silently_fallback(self) -> None:
-        self.local_path.parent.mkdir(parents=True, exist_ok=True)
-        self.local_path.write_text("scoring: [", encoding="utf-8")
+    def test_load_config_ignores_stale_runtime_file_on_disk(self) -> None:
+        stale_cfg = copy.deepcopy(scoring.get_score_config())
+        stale_cfg["scoring"]["features"]["placenta_previa"]["present"] = 99
+        self.write_stale_runtime_override(stale_cfg)
         clear_config_cache()
         scoring.clear_score_config_cache()
 
-        with self.assertRaises(yaml.YAMLError):
-            scoring.normalize_mri_result(SCORING_PAYLOAD)
+        config = load_config("risk_score.yaml")
+
+        self.assertEqual(
+            config["scoring"]["features"]["placenta_previa"]["present"],
+            1,
+        )
+
+    def test_sample_regression_ignores_stale_runtime_file_on_disk(self) -> None:
+        stale_cfg = copy.deepcopy(scoring.get_score_config())
+        stale_cfg["scoring"]["invasion_type"]["increta"] = 10
+        self.write_stale_runtime_override(stale_cfg)
+        clear_config_cache()
+        scoring.clear_score_config_cache()
+
+        text = Path("examples/sample_mri.txt").read_text(encoding="utf-8")
+        extraction = rule_extract_features(text)
+        result = scoring.normalize_mri_result(extraction)
+
+        self.assertEqual(result.score.clinical_score, 11)
+        self.assertEqual(result.score.risk_group, "high")
 
 
 if __name__ == "__main__":
