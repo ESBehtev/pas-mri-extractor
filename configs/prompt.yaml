@@ -342,6 +342,44 @@ template: |
   - цитаты или почти цитаты из текста
   - без интерпретаций
   - без новых выводов
+  - только фрагменты, которые реально есть в исходном MRI-тексте
+  - НЕ используй обобщённые labels вроде "тип врастания: increta"
+  - НЕ используй score reasons как evidence
+
+  Для каждого признака со статусом "present" или "possible":
+  - найди в исходном MRI-тексте короткую source phrase, которая прямо подтверждает этот признак
+  - добавь эту source phrase в positive_findings или uncertain_findings
+  - если source phrase нет в тексте, не выдумывай evidence
+
+  positive_findings должен включать не только заключение, но и конкретные фразы из описания, если они есть:
+  - для invasion.type / invasion.confidence
+  - для placenta_previa
+  - для anterior_placenta
+  - для retroplacental_vessels
+  - для lacunae
+  - для uterine_wall_thinning
+  - для uterine_hernia_or_bulging
+  - для bladder_involvement / parametrium_involvement / posterior_wall_involvement
+
+  Если в отчёте есть:
+  "МР-картина соответствует placenta increta"
+  "множественные плацентарные лакуны"
+  "ретроплацентарные сосуды расширены"
+  "миометрий местами не прослеживается"
+
+  ТО positive_findings должен содержать короткие source phrases, например:
+  - "МР-картина соответствует placenta increta"
+  - "множественные плацентарные лакуны"
+  - "ретроплацентарные сосуды расширены"
+  - "миометрий местами не прослеживается"
+
+  Если в отчёте есть:
+  "достоверных признаков инвазии стенки мочевого пузыря не получено"
+  и отдельно:
+  "нельзя исключить начальное вовлечение"
+
+  ТО negative_findings должен содержать отрицательную source phrase про отсутствие достоверной инвазии,
+  а uncertain_findings должен содержать uncertain source phrase про "нельзя исключить".
 
   ============================================================
   ПРАВИЛО ДЛЯ uncertain_findings
