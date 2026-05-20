@@ -8,8 +8,10 @@ from components import (
 )
 from examples import get_example_by_name, get_example_names
 from state import (
+    clear_extraction_request,
     get_last_outputs,
     init_session_state,
+    request_extraction,
     save_extraction_result,
     set_running,
 )
@@ -26,7 +28,6 @@ st.set_page_config(
 
 
 init_session_state()
-set_running(False)
 
 st.title("PAS MRI Extractor")
 st.caption("Структурированное извлечение признаков из MRI-отчётов")
@@ -94,15 +95,27 @@ text = st.text_area(
 )
 
 
-run = st.button(
+st.button(
     "Извлечь признаки",
     type="primary",
+    disabled=st.session_state.get("is_running", False),
+    on_click=request_extraction,
 )
 
 
-if run:
+if st.session_state.get("is_running"):
+    st.info("Извлечение уже выполняется...")
+
+
+if st.session_state.get("extract_requested"):
+    if st.session_state.get("is_running"):
+        st.info("Запрос уже выполняется, повторный запуск пропущен.")
+        clear_extraction_request()
+        st.stop()
+
     if not text.strip():
         st.error("Вставьте текст MRI-отчёта")
+        clear_extraction_request()
         st.stop()
 
     current_sections = split_report_sections(text)
@@ -139,12 +152,17 @@ if run:
 
     finally:
         set_running(False)
+        clear_extraction_request()
 
 
-if sections:
+if last_diagnostic_mode and dual_result:
+    st.markdown("---")
+    st.subheader("Сравнение: полный отчёт / описание / заключение")
+    render_dual_comparison(dual_result)
+
     with st.expander(
         "Разбор структуры отчёта",
-        expanded=last_diagnostic_mode,
+        expanded=False,
     ):
         render_report_sections(sections)
 
@@ -155,12 +173,6 @@ if result:
 
     st.markdown("---")
     render_json_export(result)
-
-    if last_diagnostic_mode:
-        st.markdown("---")
-        st.subheader("Diagnostics")
-        st.markdown("#### Сравнение: полный отчёт / описание / заключение")
-        render_dual_comparison(dual_result)
 else:
     st.markdown("---")
     render_clinical_result(result)

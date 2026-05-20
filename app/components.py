@@ -94,8 +94,8 @@ def colorize_status(value: Any) -> str:
         "absent": "#16a34a",
         "negative": "#16a34a",
         "отсутствует": "#16a34a",
-        "present": "#f59e0b",
-        "выявлено": "#f59e0b",
+        "present": "#dc2626",
+        "выявлено": "#dc2626",
         "possible": "#f97316",
         "возможно": "#f97316",
         "probable": "#ea580c",
@@ -545,9 +545,21 @@ def render_clinical_result(result: dict | None) -> None:
         feature_card(
             "Anatomy",
             [
-                ("Мочевой пузырь", anatomy.get("bladder_involvement"), None),
-                ("Параметрий", anatomy.get("parametrium_involvement"), None),
-                ("Задняя стенка", anatomy.get("posterior_wall_involvement"), None),
+                (
+                    "Вовлечение мочевого пузыря",
+                    anatomy.get("bladder_involvement"),
+                    None,
+                ),
+                (
+                    "Вовлечение параметрия",
+                    anatomy.get("parametrium_involvement"),
+                    None,
+                ),
+                (
+                    "Вовлечение задней стенки матки",
+                    anatomy.get("posterior_wall_involvement"),
+                    None,
+                ),
             ],
         )
 

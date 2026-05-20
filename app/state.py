@@ -10,6 +10,7 @@ SESSION_DEFAULTS = {
     "last_model_name": None,
     "last_diagnostic_mode": False,
     "report_text": "",
+    "extract_requested": False,
 }
 
 
@@ -21,6 +22,14 @@ def init_session_state() -> None:
 
 def set_running(is_running: bool) -> None:
     st.session_state["is_running"] = is_running
+
+
+def request_extraction() -> None:
+    st.session_state["extract_requested"] = True
+
+
+def clear_extraction_request() -> None:
+    st.session_state["extract_requested"] = False
 
 
 def save_extraction_result(
