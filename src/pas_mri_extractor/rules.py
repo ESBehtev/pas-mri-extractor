@@ -12,6 +12,43 @@ from .config import load_config
 from .schemas import MRIExtractionResult
 
 
+NEGATION_WINDOW_CHARS = 60
+
+NEGATION_PATTERNS = [
+    r"\bнет\b",
+    r"\bне\s+выяв\w*",
+    r"\bне\s+определя\w*",
+    r"\bне\s+получен\w*",
+    r"\bбез\s+признак\w*",
+    r"\bданн\w*\s+за\b.{0,80}\bнет\b",
+    r"\bпризнак\w*\b.{0,80}\bнет\b",
+    r"\bисключа\w*",
+]
+
+UNCERTAIN_PATTERNS = [
+    r"\bнельзя\s+исключ",
+    r"\bне\s+исключ",
+    r"\bневозможно\s+исключ",
+    r"\bсомнитель",
+    r"\bподозр",
+    r"\bвозможн",
+    r"\bвероят",
+]
+
+NEGATIVE_EVIDENCE_LABELS = {
+    "bladder_involvement": "отрицательный контекст: вовлечение мочевого пузыря",
+    "parametrium_involvement": "отрицательный контекст: вовлечение параметрия",
+    "posterior_wall_involvement": "отрицательный контекст: вовлечение задней стенки",
+    "placenta_previa": "отрицательный контекст: предлежание плаценты",
+    "retroplacental_vessels": "отрицательный контекст: ретроплацентарные сосуды",
+    "lacunae": "отрицательный контекст: плацентарные лакуны",
+    "uterine_wall_thinning": "отрицательный контекст: истончение миометрия/рубца",
+    "uterine_hernia_or_bulging": "отрицательный контекст: выбухание стенки матки",
+    "preoperative_bleeding": "отрицательный контекст: кровотечение",
+    "invasion_type": "отрицательный контекст: врастание плаценты",
+}
+
+
 def normalize_text(text: str, config: dict[str, Any]) -> str:
     text = str(text)
 
@@ -24,6 +61,40 @@ def normalize_text(text: str, config: dict[str, Any]) -> str:
         text = text.replace(old, new)
 
     return text
+
+
+def get_match_context(
+    text: str,
+    match: re.Match,
+    window_chars: int = NEGATION_WINDOW_CHARS,
+) -> str:
+    start = max(0, match.start() - window_chars)
+    end = min(len(text), match.end() + window_chars)
+
+    return text[start:end]
+
+
+def is_uncertain_context(context: str) -> bool:
+    return any(re.search(pattern, context) for pattern in UNCERTAIN_PATTERNS)
+
+
+def is_negated_match(text: str, match: re.Match) -> bool:
+    context = get_match_context(text, match)
+
+    if is_uncertain_context(context):
+        return False
+
+    return any(re.search(pattern, context) for pattern in NEGATION_PATTERNS)
+
+
+def add_negative_evidence(features: dict[str, Any], feature_name: str) -> None:
+    label = NEGATIVE_EVIDENCE_LABELS.get(feature_name)
+    if not label:
+        return
+
+    negative_findings = features.setdefault("_negative_findings", [])
+    if label not in negative_findings:
+        negative_findings.append(label)
 
 
 def extract_numeric_features(
@@ -52,7 +123,30 @@ def extract_regex_features(
 ) -> None:
     for feature_name, status_rules in config.get("regex_features", {}).items():
         for status, pattern in status_rules.items():
-            if re.search(pattern, text):
+            matches = list(re.finditer(pattern, text))
+            negated_matches = []
+            uncertain_matches = []
+            positive_matches = []
+
+            for match in matches:
+                if is_negated_match(text, match):
+                    negated_matches.append(match)
+                elif status == "present" and is_uncertain_context(
+                    get_match_context(text, match)
+                ):
+                    uncertain_matches.append(match)
+                else:
+                    positive_matches.append(match)
+
+            if negated_matches and not positive_matches:
+                add_negative_evidence(features, feature_name)
+                continue
+
+            if uncertain_matches and not positive_matches:
+                features[feature_name] = "possible"
+                break
+
+            if positive_matches:
                 features[feature_name] = status
                 break
 
@@ -69,7 +163,19 @@ def extract_invasion_type(
         priority = rule.get("priority", 0)
 
         for pattern in rule.get("patterns", []):
-            if re.search(pattern, text) and priority > matched_priority:
+            matches = list(re.finditer(pattern, text))
+            negated_matches = [
+                match for match in matches if is_negated_match(text, match)
+            ]
+            positive_matches = [
+                match for match in matches if not is_negated_match(text, match)
+            ]
+
+            if negated_matches and not positive_matches:
+                add_negative_evidence(features, "invasion_type")
+                continue
+
+            if positive_matches and priority > matched_priority:
                 matched_type = invasion_type
                 matched_priority = priority
 
@@ -105,7 +211,7 @@ def extract_invasion_confidence(
 def build_evidence(features: dict[str, Any]) -> dict[str, list[str]]:
     positive = []
     uncertain = []
-    negative = []
+    negative = list(features.get("_negative_findings", []))
 
     positive_labels = {
         "placenta_previa": "предлежание/перекрытие внутреннего зева",
