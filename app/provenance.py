@@ -1,7 +1,32 @@
+"""Evidence-only provenance highlighting helpers.
+
+This module must stay a visualization layer. It does not infer clinical
+findings, classify sentences, or modify extraction output. The source of truth
+is always result["evidence"].
+"""
+
 import html
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, TypedDict
+
+
+Polarity = Literal["positive", "uncertain", "negative"]
+MatchMethod = Literal["exact", "normalized", "token-overlap"]
+
+
+class MatchPayload(TypedDict):
+    polarity: Polarity
+    phrase: str
+    start: int
+    end: int
+    method: MatchMethod
+
+
+class HighlightPayload(TypedDict):
+    html: str
+    matches: list[MatchPayload]
+    unmatched_evidence: list[str]
 
 
 COLORS = {
@@ -28,18 +53,17 @@ WORD_RE = re.compile(r"[a-zа-я0-9]+", re.IGNORECASE)
 @dataclass(frozen=True)
 class EvidenceItem:
     index: int
-    polarity: str
+    polarity: Polarity
     phrase: str
 
 
 @dataclass(frozen=True)
 class EvidenceMatch:
-    evidence_index: int
-    polarity: str
+    polarity: Polarity
     phrase: str
     start: int
     end: int
-    method: str
+    method: MatchMethod
 
 
 @dataclass(frozen=True)
@@ -112,12 +136,13 @@ def tokenize(text: str) -> list[Token]:
 def collect_evidence(result: dict[str, Any]) -> list[EvidenceItem]:
     evidence = result.get("evidence", {}) if isinstance(result, dict) else {}
     items: list[EvidenceItem] = []
-
-    for polarity, key in [
+    evidence_sources: list[tuple[Polarity, str]] = [
         ("positive", "positive_findings"),
         ("uncertain", "uncertain_findings"),
         ("negative", "negative_findings"),
-    ]:
+    ]
+
+    for polarity, key in evidence_sources:
         for phrase in as_list(evidence.get(key)):
             items.append(
                 EvidenceItem(
@@ -162,6 +187,11 @@ def find_normalized_ranges(report_text: str, phrase: str) -> list[tuple[int, int
 
 
 def find_token_overlap_ranges(report_text: str, phrase: str) -> list[tuple[int, int]]:
+    """Conservative fallback for near-literal phrases.
+
+    This is intentionally narrow: it requires several matching normalized words
+    within a short window and refuses spans crossing sentence/line boundaries.
+    """
     if ":" in phrase:
         return []
 
@@ -209,7 +239,8 @@ def find_token_overlap_ranges(report_text: str, phrase: str) -> list[tuple[int, 
     return ranges
 
 
-def evidence_phrase_variants(phrase: str, polarity: str) -> list[str]:
+def evidence_phrase_variants(phrase: str, polarity: Polarity) -> list[str]:
+    """Split mixed evidence clauses only enough to avoid misleading spans."""
     parts = [
         part.strip(" ,.;")
         for part in re.split(r"\bоднако\b", phrase, flags=re.IGNORECASE)
@@ -228,9 +259,9 @@ def evidence_phrase_variants(phrase: str, polarity: str) -> list[str]:
 def find_evidence_ranges(
     report_text: str,
     phrase: str,
-    polarity: str,
-) -> list[tuple[int, int, str]]:
-    ranges_with_methods: list[tuple[int, int, str]] = []
+    polarity: Polarity,
+) -> list[tuple[int, int, MatchMethod]]:
+    ranges_with_methods: list[tuple[int, int, MatchMethod]] = []
 
     for variant in evidence_phrase_variants(phrase, polarity):
         exact_ranges = find_exact_ranges(report_text, variant)
@@ -286,7 +317,8 @@ def select_non_overlapping_matches(
 def build_report_highlighting(
     report_text: str,
     result: dict[str, Any],
-) -> dict[str, Any]:
+) -> HighlightPayload:
+    """Build safe HTML by highlighting only evidence phrases found in report."""
     evidence_items = collect_evidence(result)
     candidates: list[EvidenceMatch] = []
     found_evidence_indices = set()
@@ -300,7 +332,6 @@ def build_report_highlighting(
         for start, end, method in ranges:
             candidates.append(
                 EvidenceMatch(
-                    evidence_index=item.index,
                     polarity=item.polarity,
                     phrase=item.phrase,
                     start=start,

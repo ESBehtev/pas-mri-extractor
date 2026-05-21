@@ -474,7 +474,7 @@ def render_evidence_highlighting(result: dict, report_text: str | None) -> None:
     unmatched_evidence = provenance["unmatched_evidence"]
 
     with st.expander("Подсветка отчёта", expanded=False):
-        st.metric("unmatched evidence", len(unmatched_evidence))
+        st.caption(f"unmatched evidence: {len(unmatched_evidence)}")
         if not positive_findings and not uncertain_findings and not negative_findings:
             st.write("Evidence для подсветки нет.")
 
