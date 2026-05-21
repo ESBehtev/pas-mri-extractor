@@ -474,7 +474,6 @@ def render_evidence_highlighting(result: dict, report_text: str | None) -> None:
     unmatched_evidence = provenance["unmatched_evidence"]
 
     with st.expander("Подсветка отчёта", expanded=False):
-        st.caption(f"unmatched evidence: {len(unmatched_evidence)}")
         if not positive_findings and not uncertain_findings and not negative_findings:
             st.write("Evidence для подсветки нет.")
 
@@ -647,24 +646,24 @@ def render_clinical_result(result: dict | None, report_text: str | None = None) 
             ],
         )
 
-    st.subheader("Evidence")
     positive_findings = as_list(evidence.get("positive_findings"))
     uncertain_findings = as_list(evidence.get("uncertain_findings"))
     negative_findings = as_list(evidence.get("negative_findings"))
 
-    col_pos, col_unc, col_neg = st.columns(3)
+    with st.expander("Evidence", expanded=False):
+        col_pos, col_unc, col_neg = st.columns(3)
 
-    with col_pos:
-        st.markdown("#### Признаки PAS")
-        show_findings(positive_findings, "positive")
+        with col_pos:
+            st.markdown("#### Признаки PAS")
+            show_findings(positive_findings, "positive")
 
-    with col_unc:
-        st.markdown("#### Неопределённые находки")
-        show_findings(uncertain_findings, "uncertain")
+        with col_unc:
+            st.markdown("#### Неопределённые находки")
+            show_findings(uncertain_findings, "uncertain")
 
-    with col_neg:
-        st.markdown("#### Признаки против PAS")
-        show_findings(negative_findings, "negative")
+        with col_neg:
+            st.markdown("#### Признаки против PAS")
+            show_findings(negative_findings, "negative")
 
     render_evidence_highlighting(result, report_text)
 
