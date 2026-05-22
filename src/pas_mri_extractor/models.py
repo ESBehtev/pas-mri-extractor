@@ -23,6 +23,27 @@ QWEN_2_5_FALLBACK_COMMAND = (
     "python run_single.py --model qwen_2_5_7b --text-file examples/sample_mri.txt"
 )
 
+STRICT_JSON_SYSTEM_PROMPT = (
+    "Return ONLY one valid JSON object. Do not use markdown. "
+    "Do not include explanations. The first character of the response must be {. "
+    "The last character of the response must be }."
+)
+
+STRICT_JSON_TEXT_PREFIX = (
+    "Return ONLY one valid JSON object.\n"
+    "Do not use markdown.\n"
+    "Do not include explanations.\n"
+    "The first character of the response must be {.\n"
+    "The last character of the response must be }.\n\n"
+)
+
+RETRY_JSON_TEXT_PREFIX = (
+    "Your previous answer was invalid. "
+    "Output ONLY valid JSON matching the schema.\n"
+    "Do not use markdown. Do not include explanations.\n"
+    "The first character must be { and the last character must be }.\n\n"
+)
+
 
 @dataclass
 class LoadedModel:
@@ -390,13 +411,67 @@ def format_prompt(loaded_model: LoadedModel, prompt: str) -> str:
     )
 
 
-def generate_text(loaded_model: LoadedModel, prompt: str) -> str:
+def build_llama_cpp_prompt(prompt: str, retry_json: bool = False) -> str:
+    prefix = RETRY_JSON_TEXT_PREFIX if retry_json else STRICT_JSON_TEXT_PREFIX
+    return f"{prefix}{prompt}"
+
+
+def merge_generation_config(
+    loaded_model: LoadedModel,
+    overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    generation_config = dict(loaded_model.generation_config)
+    if overrides:
+        generation_config.update(overrides)
+
+    return generation_config
+
+
+def generate_text(
+    loaded_model: LoadedModel,
+    prompt: str,
+    generation_overrides: dict[str, Any] | None = None,
+    retry_json: bool = False,
+) -> str:
+    generation_config = merge_generation_config(loaded_model, generation_overrides)
+
     if loaded_model.backend == "llama_cpp":
+        tokenizer_config = loaded_model.tokenizer_config
+        max_tokens = generation_config.get("max_new_tokens", 3000)
+        temperature = generation_config.get("temperature", 0.0)
+        top_p = generation_config.get("top_p", 1.0)
+
+        if tokenizer_config.get("use_chat_template", False) and hasattr(
+            loaded_model.model,
+            "create_chat_completion",
+        ):
+            system_prompt = (
+                RETRY_JSON_TEXT_PREFIX.strip()
+                if retry_json
+                else STRICT_JSON_SYSTEM_PROMPT
+            )
+            output = loaded_model.model.create_chat_completion(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": system_prompt,
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    },
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+            )
+            return output["choices"][0]["message"]["content"].strip()
+
         output = loaded_model.model(
-            format_prompt(loaded_model, prompt),
-            max_tokens=loaded_model.generation_config.get("max_new_tokens", 1200),
-            temperature=loaded_model.generation_config.get("temperature", 0.1),
-            top_p=loaded_model.generation_config.get("top_p", 0.9),
+            build_llama_cpp_prompt(prompt, retry_json=retry_json),
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
         )
         return output["choices"][0]["text"].strip()
 
@@ -421,7 +496,7 @@ def generate_text(loaded_model: LoadedModel, prompt: str) -> str:
     with torch.no_grad():
         output_ids = model.generate(
             **inputs,
-            **loaded_model.generation_config,
+            **generation_config,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.pad_token_id,
         )

@@ -4,6 +4,9 @@
 Собирает prompt, вызывает модель, парсит JSON и валидирует результат через Pydantic.
 """
 
+import os
+import sys
+
 from .json_utils import extract_json_object
 from .models import LoadedModel, generate_text, load_llm
 from .prompts import build_prompt
@@ -31,6 +34,75 @@ STATUS_VALUES = {
     "probable",
     "present",
 }
+
+JSON_PARSE_FAILURE_MARKERS = (
+    "No JSON object found in model output",
+    "Incomplete JSON object in model output",
+)
+
+
+def should_print_raw_output(print_raw_output: bool = False) -> bool:
+    return print_raw_output or os.getenv("PAS_PRINT_RAW_OUTPUT") == "1"
+
+
+def print_raw_model_output(raw_output: str) -> None:
+    print("----- RAW MODEL OUTPUT START -----", file=sys.stderr)
+    print(raw_output, file=sys.stderr)
+    print("----- RAW MODEL OUTPUT END -----", file=sys.stderr)
+
+
+def is_json_parse_failure(error: Exception) -> bool:
+    message = str(error)
+    return any(marker in message for marker in JSON_PARSE_FAILURE_MARKERS)
+
+
+def build_raw_output_debug_message(raw_output: str) -> str:
+    return (
+        "Model output could not be parsed as JSON.\n"
+        f"raw_output_length={len(raw_output)}\n"
+        "raw_output_first_1500:\n"
+        f"{raw_output[:1500]}\n"
+        "raw_output_last_1500:\n"
+        f"{raw_output[-1500:]}"
+    )
+
+
+def parse_json_with_retry(
+    loaded_model: LoadedModel,
+    prompt: str,
+    raw_output: str,
+    print_raw_output: bool = False,
+) -> tuple[dict, str]:
+    if should_print_raw_output(print_raw_output):
+        print_raw_model_output(raw_output)
+
+    try:
+        return extract_json_object(raw_output), raw_output
+    except ValueError as first_error:
+        if not is_json_parse_failure(first_error):
+            raise
+
+    retry_raw_output = generate_text(
+        loaded_model,
+        prompt,
+        generation_overrides={
+            "max_new_tokens": 3500,
+            "temperature": 0.0,
+        },
+        retry_json=True,
+    )
+
+    if should_print_raw_output(print_raw_output):
+        print_raw_model_output(retry_raw_output)
+
+    try:
+        return extract_json_object(retry_raw_output), retry_raw_output
+    except ValueError as retry_error:
+        if is_json_parse_failure(retry_error):
+            debug_message = build_raw_output_debug_message(retry_raw_output)
+            raise ValueError(debug_message) from retry_error
+        raise
+
 
 def normalize_invasion_type(value: object) -> str:
     if value is None:
@@ -241,6 +313,7 @@ def extract_mri_features(
     mri_text: str,
     model_name: str | None = None,
     loaded_model: LoadedModel | None = None,
+    print_raw_output: bool = False,
 ) -> MRIExtractionResult:
     if not mri_text or not mri_text.strip():
         raise ValueError("MRI text is empty")
@@ -251,7 +324,12 @@ def extract_mri_features(
     prompt = build_prompt(mri_text)
     raw_output = generate_text(loaded_model, prompt)
 
-    parsed = extract_json_object(raw_output)
+    parsed, _ = parse_json_with_retry(
+        loaded_model,
+        prompt,
+        raw_output,
+        print_raw_output=print_raw_output,
+    )
     parsed = postprocess_extraction(parsed)
 
     return MRIExtractionResult.model_validate(parsed)
@@ -261,6 +339,7 @@ def extract_mri_features_with_raw(
     mri_text: str,
     model_name: str | None = None,
     loaded_model: LoadedModel | None = None,
+    print_raw_output: bool = False,
 ) -> dict:
     if not mri_text or not mri_text.strip():
         raise ValueError("MRI text is empty")
@@ -271,14 +350,19 @@ def extract_mri_features_with_raw(
     prompt = build_prompt(mri_text)
     raw_output = generate_text(loaded_model, prompt)
 
-    parsed = extract_json_object(raw_output)
+    parsed, final_raw_output = parse_json_with_retry(
+        loaded_model,
+        prompt,
+        raw_output,
+        print_raw_output=print_raw_output,
+    )
     parsed = postprocess_extraction(parsed)
 
     validated = MRIExtractionResult.model_validate(parsed)
 
     return {
         "prompt": prompt,
-        "raw_output": raw_output,
+        "raw_output": final_raw_output,
         "parsed": parsed,
         "validated": validated.model_dump(),
     }

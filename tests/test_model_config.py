@@ -44,6 +44,13 @@ class ModelConfigTest(unittest.TestCase):
         )
         self.assertIn("--model qwen_2_5_7b", dry_run["fallback_command"])
 
+        model_cfg = get_available_models()["qwen_3_6_35b_gguf"]
+        self.assertEqual(model_cfg["generation"]["temperature"], 0.0)
+        self.assertEqual(model_cfg["generation"]["top_p"], 1.0)
+        self.assertEqual(model_cfg["generation"]["max_new_tokens"], 3000)
+        self.assertEqual(model_cfg["runtime"]["n_ctx"], 8192)
+        self.assertTrue(model_cfg["tokenizer"]["use_chat_template"])
+
     def test_transformers_qwen_3_6_remains_registered_as_experimental(self) -> None:
         models = get_available_models()
 

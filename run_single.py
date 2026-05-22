@@ -48,6 +48,12 @@ def parse_args() -> argparse.Namespace:
         help="Validate selected model config and local path without loading weights.",
     )
 
+    parser.add_argument(
+        "--print-raw-output",
+        action="store_true",
+        help="Print raw model output before JSON parsing.",
+    )
+
     return parser.parse_args()
 
 
@@ -93,6 +99,7 @@ def main() -> None:
             extracted = extract_mri_features(
                 mri_text=mri_text,
                 model_name=args.model,
+                print_raw_output=args.print_raw_output,
             )
     except ModelConfigError as error:
         print(str(error), file=sys.stderr)

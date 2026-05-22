@@ -152,6 +152,23 @@ PYTHONPATH=src python run_single.py \
   --dry-run-model-config
 ```
 
+Для отладки JSON-ответа модели:
+
+```bash
+PYTHONPATH=src python run_single.py \
+  --model qwen_3_6_35b_gguf \
+  --text-file examples/sample_mri.txt \
+  --print-raw-output
+```
+
+То же самое через env:
+
+```bash
+PAS_PRINT_RAW_OUTPUT=1 PYTHONPATH=src python run_single.py \
+  --model qwen_3_6_35b_gguf \
+  --text-file examples/sample_mri.txt
+```
+
 ---
 
 ## Запуск только через regex-правила
