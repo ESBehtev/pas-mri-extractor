@@ -129,7 +129,7 @@ streamlit run app/streamlit_app.py --server.port 8501
 Run single example on server:
 
 ```bash
-python run_single.py --model qwen_3_6_35b --text-file examples/sample_mri.txt
+python run_single.py --model qwen_3_6_35b_gguf --text-file examples/sample_mri.txt
 ```
 
 Check git state:

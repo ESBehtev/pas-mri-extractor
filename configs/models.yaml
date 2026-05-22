@@ -1,6 +1,28 @@
-default_model: qwen_3_6_35b
+default_model: qwen_3_6_35b_gguf
 
 models:
+
+  qwen_3_6_35b_gguf:
+    display_name: Qwen3.6-35B-A3B GGUF Q4_K_M
+    model_id_or_path: models/qwen3.6-35b-a3b-gguf/Qwen3.6-35B-A3B-Q4_K_M.gguf
+    hf_repo: lmstudio-community/Qwen3.6-35B-A3B-GGUF
+    hf_filename: Qwen3.6-35B-A3B-Q4_K_M.gguf
+    backend: llama_cpp
+    quantization: GGUF Q4_K_M
+
+    generation:
+      temperature: 0.1
+      top_p: 0.9
+      max_new_tokens: 1200
+
+    tokenizer:
+      use_chat_template: false
+      skip_special_tokens: true
+
+    runtime:
+      n_gpu_layers: -1
+      n_ctx: 4096
+      verbose: false
 
   qwen_3_6_35b:
     display_name: Qwen3.6-35B-A3B

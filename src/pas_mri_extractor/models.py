@@ -28,6 +28,7 @@ QWEN_2_5_FALLBACK_COMMAND = (
 class LoadedModel:
     name: str
     model_id: str
+    backend: str
     tokenizer: Any
     model: Any
     generation_config: dict[str, Any]
@@ -135,11 +136,25 @@ def assert_model_available(model_name: str, model_cfg: dict[str, Any]) -> None:
         return
 
     hf_repo = model_cfg.get("hf_repo", model_id_or_path)
+    hf_filename = model_cfg.get("hf_filename")
+    expected_label = (
+        "Expected GGUF model"
+        if model_cfg.get("backend") == "llama_cpp"
+        else "Expected path"
+    )
+    download_command = f"hf download {hf_repo}"
+    if hf_filename:
+        download_command = f"{download_command} {hf_filename}"
+    download_target = local_path.parent if hf_filename else local_path
+    download_command = (
+        f"{download_command} --local-dir {display_path(download_target)}"
+    )
+
     raise ModelConfigError(
         f"Model {model_name} not found.\n"
-        f"Expected path:\n{display_path(local_path)}\n\n"
+        f"{expected_label}:\n{display_path(local_path)}\n\n"
         f"Download on server:\n"
-        f"hf download {hf_repo} --local-dir {display_path(local_path)}\n\n"
+        f"{download_command}\n\n"
         f"Fallback:\n{QWEN_2_5_FALLBACK_COMMAND}"
     )
 
@@ -149,6 +164,16 @@ def dry_run_model_config(model_name: str | None = None) -> dict[str, Any]:
     model_id_or_path = get_model_id_or_path(model_cfg)
     local_path = resolve_model_path(model_id_or_path)
     exists = None if local_path is None else local_path.exists()
+    hf_filename = model_cfg.get("hf_filename")
+    download_command = None
+    if local_path is not None and model_cfg.get("hf_repo"):
+        download_command = f"hf download {model_cfg.get('hf_repo')}"
+        if hf_filename:
+            download_command = f"{download_command} {hf_filename}"
+        download_target = local_path.parent if hf_filename else local_path
+        download_command = (
+            f"{download_command} --local-dir {display_path(download_target)}"
+        )
 
     return {
         "model": resolved_name,
@@ -158,12 +183,8 @@ def dry_run_model_config(model_name: str | None = None) -> dict[str, Any]:
         "expected_path": display_path(local_path) if local_path is not None else None,
         "path_exists": exists,
         "hf_repo": model_cfg.get("hf_repo"),
-        "download_command": (
-            f"hf download {model_cfg.get('hf_repo')} --local-dir "
-            f"{display_path(local_path)}"
-        )
-        if local_path is not None and model_cfg.get("hf_repo")
-        else None,
+        "hf_filename": hf_filename,
+        "download_command": download_command,
         "fallback_command": QWEN_2_5_FALLBACK_COMMAND,
     }
 
@@ -218,15 +239,51 @@ def build_quantization_config(quantization_config: dict[str, Any]) -> Any | None
     )
 
 
-def load_llm(model_name: str | None = None) -> LoadedModel:
-    model_name, model_cfg = get_model_config(model_name)
-    backend = model_cfg.get("backend", "transformers")
-    if backend != "transformers":
-        raise ModelConfigError(
-            f"Model {model_name} uses unsupported backend '{backend}'. "
-            "Only 'transformers' is configured in this repository."
-        )
+def load_llama_cpp_model(
+    model_name: str,
+    model_cfg: dict[str, Any],
+) -> LoadedModel:
+    assert_model_available(model_name, model_cfg)
 
+    try:
+        from llama_cpp import Llama
+    except ImportError as error:
+        raise ModelConfigError(
+            "llama-cpp-python is required for backend 'llama_cpp'.\n"
+            "Install on server:\n"
+            "pip install llama-cpp-python"
+        ) from error
+
+    model_path = resolve_model_path(get_model_id_or_path(model_cfg))
+    if model_path is None:
+        raise ModelConfigError("llama_cpp backend requires a local model path.")
+
+    runtime_config = model_cfg.get("runtime", {})
+    generation_config = model_cfg.get("generation", {})
+    tokenizer_config = model_cfg.get("tokenizer", {})
+
+    model = Llama(
+        model_path=str(model_path),
+        n_gpu_layers=int(runtime_config.get("n_gpu_layers", -1)),
+        n_ctx=int(runtime_config.get("n_ctx", 4096)),
+        verbose=bool(runtime_config.get("verbose", False)),
+    )
+
+    return LoadedModel(
+        name=model_name,
+        model_id=str(model_path),
+        backend="llama_cpp",
+        tokenizer=None,
+        model=model,
+        generation_config=generation_config,
+        tokenizer_config=tokenizer_config,
+    )
+
+
+def load_transformers_model(
+    model_name: str,
+    model_cfg: dict[str, Any],
+) -> LoadedModel:
     assert_model_available(model_name, model_cfg)
 
     model_id = get_model_id_or_path(model_cfg)
@@ -280,6 +337,7 @@ def load_llm(model_name: str | None = None) -> LoadedModel:
     return LoadedModel(
         name=model_name,
         model_id=model_id,
+        backend="transformers",
         tokenizer=tokenizer,
         model=model,
         generation_config=generation_config,
@@ -287,7 +345,26 @@ def load_llm(model_name: str | None = None) -> LoadedModel:
     )
 
 
+def load_llm(model_name: str | None = None) -> LoadedModel:
+    model_name, model_cfg = get_model_config(model_name)
+    backend = model_cfg.get("backend", "transformers")
+
+    if backend == "transformers":
+        return load_transformers_model(model_name, model_cfg)
+
+    if backend == "llama_cpp":
+        return load_llama_cpp_model(model_name, model_cfg)
+
+    raise ModelConfigError(
+        f"Model {model_name} uses unsupported backend '{backend}'. "
+        "Supported backends: transformers, llama_cpp."
+    )
+
+
 def format_prompt(loaded_model: LoadedModel, prompt: str) -> str:
+    if loaded_model.backend == "llama_cpp":
+        return prompt
+
     tokenizer = loaded_model.tokenizer
     tokenizer_config = loaded_model.tokenizer_config
 
@@ -314,6 +391,15 @@ def format_prompt(loaded_model: LoadedModel, prompt: str) -> str:
 
 
 def generate_text(loaded_model: LoadedModel, prompt: str) -> str:
+    if loaded_model.backend == "llama_cpp":
+        output = loaded_model.model(
+            format_prompt(loaded_model, prompt),
+            max_tokens=loaded_model.generation_config.get("max_new_tokens", 1200),
+            temperature=loaded_model.generation_config.get("temperature", 0.1),
+            top_p=loaded_model.generation_config.get("top_p", 0.9),
+        )
+        return output["choices"][0]["text"].strip()
+
     tokenizer = loaded_model.tokenizer
     model = loaded_model.model
     tokenizer_config = loaded_model.tokenizer_config

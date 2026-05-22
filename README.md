@@ -134,20 +134,22 @@ python run_single.py --text-file examples/sample_mri.txt
 
 ```bash
 python run_single.py \
-  --model qwen_3_6_35b \
+  --model qwen_3_6_35b_gguf \
   --text-file examples/sample_mri.txt
 ```
 
 Или через переменную окружения:
 
 ```bash
-PAS_MODEL=qwen_3_6_35b python run_single.py --text-file examples/sample_mri.txt
+PAS_MODEL=qwen_3_6_35b_gguf python run_single.py --text-file examples/sample_mri.txt
 ```
 
 Проверить конфиг и наличие локальной модели без загрузки весов в GPU:
 
 ```bash
-python run_single.py --model qwen_3_6_35b --dry-run-model-config
+PYTHONPATH=src python run_single.py \
+  --model qwen_3_6_35b_gguf \
+  --dry-run-model-config
 ```
 
 ---
@@ -210,25 +212,47 @@ configs/models.yaml
 Текущая модель по умолчанию:
 
 ```text
-Qwen/Qwen3.6-35B-A3B
+Qwen3.6-35B-A3B GGUF Q4_K_M
 ```
 
 Основная модель:
 
 ```text
-qwen_3_6_35b -> Qwen3.6-35B-A3B
+qwen_3_6_35b_gguf -> Qwen3.6-35B-A3B GGUF Q4_K_M
 ```
 
 Локальный путь ожидается здесь:
 
 ```text
-models/qwen3.6-35b-a3b
+models/qwen3.6-35b-a3b-gguf/Qwen3.6-35B-A3B-Q4_K_M.gguf
 ```
 
-Скачать модель на сервере:
+Установить backend на сервере:
 
 ```bash
-hf download Qwen/Qwen3.6-35B-A3B --local-dir models/qwen3.6-35b-a3b
+pip install llama-cpp-python
+```
+
+Скачать GGUF-модель на сервере:
+
+```bash
+hf download lmstudio-community/Qwen3.6-35B-A3B-GGUF \
+  Qwen3.6-35B-A3B-Q4_K_M.gguf \
+  --local-dir models/qwen3.6-35b-a3b-gguf
+```
+
+Запуск через GGUF backend:
+
+```bash
+PYTHONPATH=src python run_single.py \
+  --model qwen_3_6_35b_gguf \
+  --text-file examples/sample_mri.txt
+```
+
+Streamlit:
+
+```bash
+PYTHONPATH=src streamlit run app/streamlit_app.py
 ```
 
 Fallback-модель Qwen2.5-7B сохранена:
