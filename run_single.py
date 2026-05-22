@@ -10,6 +10,7 @@ import json
 import sys
 
 from pas_mri_extractor.extractor import extract_mri_features
+from pas_mri_extractor.models import ModelConfigError, dry_run_model_config
 from pas_mri_extractor.rules import rule_extract_features
 from pas_mri_extractor.scoring import normalize_mri_result
 
@@ -41,6 +42,12 @@ def parse_args() -> argparse.Namespace:
         help="Use regex rules instead of LLM",
     )
 
+    parser.add_argument(
+        "--dry-run-model-config",
+        action="store_true",
+        help="Validate selected model config and local path without loading weights.",
+    )
+
     return parser.parse_args()
 
 
@@ -57,18 +64,39 @@ def read_mri_text(args: argparse.Namespace) -> str:
 
 def main() -> None:
     args = parse_args()
+
+    if args.dry_run_model_config:
+        try:
+            config_check = dry_run_model_config(args.model)
+        except ModelConfigError as error:
+            print(str(error), file=sys.stderr)
+            sys.exit(2)
+
+        print(
+            json.dumps(
+                config_check,
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+
     mri_text = read_mri_text(args)
 
     if not mri_text.strip():
         raise ValueError("MRI text is empty. Use --text, --text-file, or stdin.")
 
-    if args.use_rules:
-        extracted = rule_extract_features(mri_text)
-    else:
-        extracted = extract_mri_features(
-            mri_text=mri_text,
-            model_name=args.model,
-        )
+    try:
+        if args.use_rules:
+            extracted = rule_extract_features(mri_text)
+        else:
+            extracted = extract_mri_features(
+                mri_text=mri_text,
+                model_name=args.model,
+            )
+    except ModelConfigError as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(2)
 
     result = normalize_mri_result(extracted)
 

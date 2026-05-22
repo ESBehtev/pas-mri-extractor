@@ -8,7 +8,7 @@ from pas_mri_extractor.scoring import normalize_mri_result
 
 
 @lru_cache(maxsize=2)
-def get_cached_model(model_name: str) -> LoadedModel:
+def get_cached_model(model_name: str | None) -> LoadedModel:
     """
     Загружает LLM один раз на процесс Python и переиспользует её
     для следующих извлечений.
@@ -18,7 +18,7 @@ def get_cached_model(model_name: str) -> LoadedModel:
 
 def extract_features(
     text: str,
-    model_name: str = "qwen_7b",
+    model_name: str | None = None,
 ) -> dict[str, Any]:
     """
     Основная точка входа для Streamlit / CLI / будущего API.
@@ -44,7 +44,7 @@ def extract_features(
 
 def extract_features_dual(
     text: str,
-    model_name: str = "qwen_7b",
+    model_name: str | None = None,
 ) -> dict[str, Any]:
     """
     Раздельно анализирует:

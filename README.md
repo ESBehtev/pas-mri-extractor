@@ -130,6 +130,26 @@ streamlit run app/streamlit_app.py
 python run_single.py --text-file examples/sample_mri.txt
 ```
 
+Модель можно выбрать явно:
+
+```bash
+python run_single.py \
+  --model qwen_3_6_35b \
+  --text-file examples/sample_mri.txt
+```
+
+Или через переменную окружения:
+
+```bash
+PAS_MODEL=qwen_3_6_35b python run_single.py --text-file examples/sample_mri.txt
+```
+
+Проверить конфиг и наличие локальной модели без загрузки весов в GPU:
+
+```bash
+python run_single.py --model qwen_3_6_35b --dry-run-model-config
+```
+
 ---
 
 ## Запуск только через regex-правила
@@ -190,14 +210,34 @@ configs/models.yaml
 Текущая модель по умолчанию:
 
 ```text
-Qwen/Qwen2.5-1.5B-Instruct
+Qwen/Qwen3.6-35B-A3B
 ```
 
-Можно легко добавить другие модели:
-- Qwen
-- MedGemma
-- Llama
-- локальные HF-модели
+Основная модель:
+
+```text
+qwen_3_6_35b -> Qwen3.6-35B-A3B
+```
+
+Локальный путь ожидается здесь:
+
+```text
+models/qwen3.6-35b-a3b
+```
+
+Скачать модель на сервере:
+
+```bash
+hf download Qwen/Qwen3.6-35B-A3B --local-dir models/qwen3.6-35b-a3b
+```
+
+Fallback-модель Qwen2.5-7B сохранена:
+
+```bash
+python run_single.py \
+  --model qwen_2_5_7b \
+  --text-file examples/sample_mri.txt
+```
 
 ---
 

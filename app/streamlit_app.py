@@ -19,6 +19,7 @@ from state import (
 
 from pas_mri_extractor.pipeline import extract_features, extract_features_dual
 from pas_mri_extractor.pipeline import get_cached_model
+from pas_mri_extractor.models import get_available_models, get_default_model_name
 from pas_mri_extractor.config import config_overrides
 from pas_mri_extractor.scoring import clear_score_config_cache
 from pas_mri_extractor.report_sections import split_report_sections
@@ -63,10 +64,23 @@ with extract_tab:
     control_col, example_col = st.columns([1, 2])
 
     with control_col:
+        available_models = get_available_models()
+        model_options = list(available_models.keys())
+        default_model = get_default_model_name()
+        default_model_index = (
+            model_options.index(default_model)
+            if default_model in model_options
+            else 0
+        )
+
         model_name = st.selectbox(
             "Модель",
-            ["qwen_7b"],
-            index=0,
+            model_options,
+            index=default_model_index,
+            format_func=lambda name: available_models[name].get(
+                "display_name",
+                name,
+            ),
             key="model_name",
         )
 

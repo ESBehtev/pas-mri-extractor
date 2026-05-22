@@ -6,6 +6,7 @@
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -17,6 +18,11 @@ from .config import load_config
 
 load_dotenv()
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+QWEN_2_5_FALLBACK_COMMAND = (
+    "python run_single.py --model qwen_2_5_7b --text-file examples/sample_mri.txt"
+)
+
 
 @dataclass
 class LoadedModel:
@@ -26,6 +32,140 @@ class LoadedModel:
     model: Any
     generation_config: dict[str, Any]
     tokenizer_config: dict[str, Any]
+
+
+class ModelConfigError(RuntimeError):
+    pass
+
+
+def resolve_model_name(model_name: str | None = None) -> str:
+    if model_name:
+        return model_name
+
+    env_model = os.getenv("PAS_MODEL")
+    if env_model:
+        return env_model
+
+    config = load_config("models.yaml")
+    return config["default_model"]
+
+
+def get_models_config() -> dict[str, Any]:
+    return load_config("models.yaml")
+
+
+def get_available_models() -> dict[str, dict[str, Any]]:
+    return get_models_config().get("models", {})
+
+
+def get_default_model_name() -> str:
+    return resolve_model_name(None)
+
+
+def get_model_config(model_name: str | None = None) -> tuple[str, dict[str, Any]]:
+    resolved_name = resolve_model_name(model_name)
+    config = get_models_config()
+    models = config.get("models", {})
+
+    if resolved_name not in models:
+        available = ", ".join(sorted(models)) or "none"
+        raise ModelConfigError(
+            f"Unknown model '{resolved_name}'. Available models: {available}"
+        )
+
+    return resolved_name, models[resolved_name]
+
+
+def resolve_model_path(path_or_id: str) -> Path | None:
+    path = Path(path_or_id)
+
+    if path.is_absolute():
+        return path
+
+    if "/" in path_or_id and not path_or_id.startswith("models/"):
+        return None
+
+    return PROJECT_ROOT / path
+
+
+def get_model_id_or_path(model_cfg: dict[str, Any]) -> str:
+    model_id_or_path = model_cfg.get("model_id_or_path") or model_cfg.get("model_id")
+    if not model_id_or_path:
+        raise ModelConfigError("Model config must define model_id_or_path or model_id.")
+
+    return str(model_id_or_path)
+
+
+def display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(PROJECT_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def get_quantization_config(model_cfg: dict[str, Any]) -> dict[str, Any]:
+    quantization_config = model_cfg.get("quantization_config")
+
+    if isinstance(quantization_config, dict):
+        return quantization_config
+
+    legacy_config = model_cfg.get("quantization")
+    if isinstance(legacy_config, dict):
+        return legacy_config
+
+    if model_cfg.get("load_in_4bit"):
+        return {
+            "load_in_4bit": True,
+            "bnb_4bit_compute_dtype": model_cfg.get("torch_dtype", "float16"),
+            "bnb_4bit_use_double_quant": model_cfg.get(
+                "bnb_4bit_use_double_quant",
+                True,
+            ),
+            "bnb_4bit_quant_type": model_cfg.get("bnb_4bit_quant_type", "nf4"),
+        }
+
+    return {}
+
+
+def assert_model_available(model_name: str, model_cfg: dict[str, Any]) -> None:
+    model_id_or_path = get_model_id_or_path(model_cfg)
+    local_path = resolve_model_path(model_id_or_path)
+
+    if local_path is None or local_path.exists():
+        return
+
+    hf_repo = model_cfg.get("hf_repo", model_id_or_path)
+    raise ModelConfigError(
+        f"Model {model_name} not found.\n"
+        f"Expected path:\n{display_path(local_path)}\n\n"
+        f"Download on server:\n"
+        f"hf download {hf_repo} --local-dir {display_path(local_path)}\n\n"
+        f"Fallback:\n{QWEN_2_5_FALLBACK_COMMAND}"
+    )
+
+
+def dry_run_model_config(model_name: str | None = None) -> dict[str, Any]:
+    resolved_name, model_cfg = get_model_config(model_name)
+    model_id_or_path = get_model_id_or_path(model_cfg)
+    local_path = resolve_model_path(model_id_or_path)
+    exists = None if local_path is None else local_path.exists()
+
+    return {
+        "model": resolved_name,
+        "display_name": model_cfg.get("display_name", resolved_name),
+        "backend": model_cfg.get("backend", "transformers"),
+        "model_id_or_path": model_id_or_path,
+        "expected_path": display_path(local_path) if local_path is not None else None,
+        "path_exists": exists,
+        "hf_repo": model_cfg.get("hf_repo"),
+        "download_command": (
+            f"hf download {model_cfg.get('hf_repo')} --local-dir "
+            f"{display_path(local_path)}"
+        )
+        if local_path is not None and model_cfg.get("hf_repo")
+        else None,
+        "fallback_command": QWEN_2_5_FALLBACK_COMMAND,
+    }
 
 
 def get_torch_device(device: str = "auto") -> str:
@@ -79,18 +219,21 @@ def build_quantization_config(quantization_config: dict[str, Any]) -> Any | None
 
 
 def load_llm(model_name: str | None = None) -> LoadedModel:
-    config = load_config("models.yaml")
+    model_name, model_cfg = get_model_config(model_name)
+    backend = model_cfg.get("backend", "transformers")
+    if backend != "transformers":
+        raise ModelConfigError(
+            f"Model {model_name} uses unsupported backend '{backend}'. "
+            "Only 'transformers' is configured in this repository."
+        )
 
-    if model_name is None:
-        model_name = config["default_model"]
+    assert_model_available(model_name, model_cfg)
 
-    model_cfg = config["models"][model_name]
-
-    model_id = model_cfg["model_id"]
+    model_id = get_model_id_or_path(model_cfg)
     generation_config = model_cfg.get("generation", {})
     tokenizer_config = model_cfg.get("tokenizer", {})
     runtime_config = model_cfg.get("runtime", {})
-    quantization_config = model_cfg.get("quantization", {})
+    quantization_config = get_quantization_config(model_cfg)
 
     device = get_torch_device(
         runtime_config.get("device", "auto")

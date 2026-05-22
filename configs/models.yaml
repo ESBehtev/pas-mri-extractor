@@ -1,9 +1,47 @@
-default_model: qwen_7b
+default_model: qwen_3_6_35b
 
 models:
 
+  qwen_3_6_35b:
+    display_name: Qwen3.6-35B-A3B
+    model_id_or_path: models/qwen3.6-35b-a3b
+    hf_repo: Qwen/Qwen3.6-35B-A3B
+    backend: transformers
+    quantization: bitsandbytes_4bit
+    load_in_4bit: true
+    torch_dtype: bfloat16
+    device: cuda
+    bnb_4bit_quant_type: nf4
+    max_context: 8192
+
+    generation:
+      do_sample: false
+      temperature: 0.1
+      top_p: 0.9
+      repetition_penalty: 1.05
+      max_new_tokens: 1200
+
+    tokenizer:
+      truncation: true
+      max_input_tokens: 8192
+      use_chat_template: true
+      skip_special_tokens: true
+
+    runtime:
+      device: cuda
+      dtype: bfloat16
+      device_map: auto
+
+    quantization_config:
+      load_in_4bit: true
+      bnb_4bit_compute_dtype: bfloat16
+      bnb_4bit_use_double_quant: true
+      bnb_4bit_quant_type: nf4
+
   qwen_1_5b:
+    display_name: Qwen2.5-1.5B-Instruct
     model_id: Qwen/Qwen2.5-1.5B-Instruct
+    backend: transformers
 
     generation:
       do_sample: false
@@ -20,8 +58,30 @@ models:
       device: auto
       dtype: auto
 
-  qwen_7b:
+  qwen_2_5_7b:
+    display_name: Qwen2.5-7B-Instruct
     model_id: Qwen/Qwen2.5-7B-Instruct
+    backend: transformers
+
+    generation:
+      do_sample: false
+      repetition_penalty: 1.05
+      max_new_tokens: 768
+
+    tokenizer:
+      truncation: true
+      max_input_tokens: 8192
+      use_chat_template: true
+      skip_special_tokens: true
+
+    runtime:
+      device: auto
+      dtype: auto
+
+  qwen_7b:
+    display_name: Qwen2.5-7B-Instruct (legacy alias)
+    model_id: Qwen/Qwen2.5-7B-Instruct
+    backend: transformers
 
     generation:
       do_sample: false
@@ -39,7 +99,9 @@ models:
       dtype: auto
 
   medgemma_1_5_4b:
+    display_name: MedGemma 1.5 4B IT
     model_id: google/medgemma-1.5-4b-it
+    backend: transformers
 
     generation:
       do_sample: false
