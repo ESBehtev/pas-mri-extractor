@@ -1,4 +1,5 @@
-from functools import lru_cache
+import gc
+import logging
 from typing import Any
 
 from pas_mri_extractor.extractor import (
@@ -10,13 +11,74 @@ from pas_mri_extractor.report_sections import split_report_sections
 from pas_mri_extractor.scoring import normalize_mri_result
 
 
-@lru_cache(maxsize=2)
+logger = logging.getLogger(__name__)
+_CURRENT_MODEL: LoadedModel | None = None
+_CURRENT_MODEL_NAME: str | None = None
+
+
+def clear_cuda_cache() -> None:
+    try:
+        import torch
+    except ImportError:
+        return
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        logger.debug("cuda cache cleared")
+
+
+def close_model_object(model: Any) -> None:
+    close = getattr(model, "close", None)
+    if callable(close):
+        close()
+
+
+def unload_current_model() -> None:
+    """
+    Выгружает текущую модель из process-level singleton перед загрузкой другой.
+    """
+
+    global _CURRENT_MODEL, _CURRENT_MODEL_NAME
+
+    if _CURRENT_MODEL is None:
+        clear_cuda_cache()
+        gc.collect()
+        return
+
+    loaded_model = _CURRENT_MODEL
+    model_name = _CURRENT_MODEL_NAME or loaded_model.name
+
+    try:
+        close_model_object(loaded_model.model)
+    except Exception as error:
+        logger.warning("Failed to close model %s: %s", model_name, error)
+
+    loaded_model.model = None
+    loaded_model.tokenizer = None
+    _CURRENT_MODEL = None
+    _CURRENT_MODEL_NAME = None
+
+    del loaded_model
+    gc.collect()
+    logger.debug("model unloaded: %s", model_name)
+    clear_cuda_cache()
+
+
 def get_cached_model(model_name: str | None) -> LoadedModel:
     """
-    Загружает LLM один раз на процесс Python и переиспользует её
-    для следующих извлечений.
+    Держит в памяти только одну LLM на процесс Python.
+    При смене model_name старая модель выгружается перед загрузкой новой.
     """
-    return load_llm(model_name)
+
+    global _CURRENT_MODEL, _CURRENT_MODEL_NAME
+
+    if _CURRENT_MODEL is not None and _CURRENT_MODEL_NAME == model_name:
+        return _CURRENT_MODEL
+
+    unload_current_model()
+    _CURRENT_MODEL = load_llm(model_name)
+    _CURRENT_MODEL_NAME = model_name
+    return _CURRENT_MODEL
 
 
 def extract_features(

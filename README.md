@@ -386,6 +386,9 @@ PYTHONPATH=src python run_single.py \
   --dry-run-model-config
 ```
 
+Эта команда только валидирует конфиг и показывает resolved path.
+Реальная загрузка GGUF и inference не выполняются.
+
 Smoke test с загрузкой модели и короткой JSON-генерацией:
 
 ```bash
@@ -399,6 +402,43 @@ Batch eval:
 PYTHONPATH=src python -m pas_mri_extractor.batch_eval \
   --config configs/eval_qwen.yaml \
   --model qwen3_27b_q4_k_m_gguf
+```
+
+## Qwen3.6-35B-A3B GGUF на сервере RTX 3090
+
+Дополнительная GGUF-модель задана в `configs/models.yaml` как:
+
+```text
+qwen3_6_35b_a3b_gguf -> unsloth/Qwen3.6-35B-A3B-GGUF, Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+```
+
+Скачать модель:
+
+```bash
+mkdir -p ~/pas-mri-extractor/models/Qwen3.6-35B-A3B-GGUF
+cd ~/pas-mri-extractor/models/Qwen3.6-35B-A3B-GGUF
+hf download unsloth/Qwen3.6-35B-A3B-GGUF Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --local-dir .
+```
+
+Проверить конфиг без загрузки модели:
+
+```bash
+PYTHONPATH=src python run_single.py --model qwen3_6_35b_a3b_gguf --dry-run-model-config
+```
+
+Эта команда только валидирует конфиг и показывает resolved path.
+Реальная загрузка GGUF и inference не выполняются.
+
+Smoke test:
+
+```bash
+PYTHONPATH=src python -m pas_mri_extractor.smoke_test_llama_cpp --model qwen3_6_35b_a3b_gguf
+```
+
+Batch eval:
+
+```bash
+PYTHONPATH=src python -m pas_mri_extractor.batch_eval --config configs/eval_qwen.yaml --model qwen3_6_35b_a3b_gguf
 ```
 
 При OOM на RTX 3090:

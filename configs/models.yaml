@@ -33,6 +33,37 @@ models:
       n_batch: 512
       verbose: false
 
+  qwen3_6_35b_a3b_gguf:
+    display_name: Qwen3.6-35B-A3B GGUF UD-Q4_K_M
+    model_path: ~/pas-mri-extractor/models/Qwen3.6-35B-A3B-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+    hf_repo: unsloth/Qwen3.6-35B-A3B-GGUF
+    hf_filename: Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+    backend: llama_cpp
+    quantization: GGUF UD-Q4_K_M
+
+    generation:
+      temperature: 0.0
+      top_p: 0.8
+      repeat_penalty: 1.05
+      seed: 42
+      max_tokens: 2048
+      max_new_tokens: 2048
+
+    output:
+      response_format:
+        type: json_object
+      enforce_json: true
+
+    tokenizer:
+      use_chat_template: true
+      skip_special_tokens: true
+
+    runtime:
+      n_gpu_layers: -1
+      n_ctx: 8192
+      n_batch: 512
+      verbose: false
+
   qwen_2_5_7b:
     display_name: Qwen2.5-7B-Instruct
     model_id: Qwen/Qwen2.5-7B-Instruct

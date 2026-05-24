@@ -18,14 +18,13 @@ from state import (
 )
 
 from pas_mri_extractor.pipeline import extract_features, extract_features_dual
-from pas_mri_extractor.pipeline import get_cached_model
+from pas_mri_extractor.pipeline import get_cached_model, unload_current_model
 from pas_mri_extractor.models import get_available_models, get_default_model_name
 from pas_mri_extractor.config import config_overrides
 from pas_mri_extractor.scoring import clear_score_config_cache
 from pas_mri_extractor.report_sections import split_report_sections
 
 
-@st.cache_resource(show_spinner=False)
 def preload_model(model_name: str):
     return get_cached_model(model_name)
 
@@ -91,6 +90,10 @@ with extract_tab:
         )
 
     model_ready = False
+    previous_model_name = st.session_state.get("last_model_name")
+    if previous_model_name and previous_model_name != model_name:
+        unload_current_model()
+        st.cache_resource.clear()
 
     model_status.info("Модель загружается...")
     try:
