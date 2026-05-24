@@ -2,13 +2,13 @@ default_model: qwen_3_6_35b_gguf
 
 models:
 
-  qwen3_27b_gguf:
-    display_name: Qwen3.6-27B-MTP GGUF UD-Q4_K_XL
-    model_path: ~/pas-mri-extractor/models/Qwen3.6-27B-MTP-GGUF/UD-Q4_K_XL.gguf
-    hf_repo: unsloth/Qwen3.6-27B-MTP-GGUF
-    hf_filename: UD-Q4_K_XL.gguf
+  qwen3_27b_q4_k_m_gguf:
+    display_name: Qwen3.6-27B GGUF Q4_K_M
+    model_path: ~/pas-mri-extractor/models/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf
+    hf_repo: unsloth/Qwen3.6-27B-GGUF
+    hf_filename: Qwen3.6-27B-Q4_K_M.gguf
     backend: llama_cpp
-    quantization: GGUF UD-Q4_K_XL
+    quantization: GGUF Q4_K_M
 
     generation:
       temperature: 0.0

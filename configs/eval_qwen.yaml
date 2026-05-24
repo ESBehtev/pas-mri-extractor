@@ -1,5 +1,5 @@
 run_name: qwen_eval
-model: qwen3_27b_gguf
+model: qwen3_27b_q4_k_m_gguf
 
 cases:
   - id: increta_case_001
