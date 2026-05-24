@@ -9,8 +9,8 @@ import argparse
 import json
 import sys
 
-from pas_mri_extractor.extractor import extract_mri_features
 from pas_mri_extractor.models import ModelConfigError, dry_run_model_config
+from pas_mri_extractor.pipeline import extract_features_with_artifacts
 from pas_mri_extractor.rules import rule_extract_features
 from pas_mri_extractor.scoring import normalize_mri_result
 
@@ -95,21 +95,21 @@ def main() -> None:
     try:
         if args.use_rules:
             extracted = rule_extract_features(mri_text)
+            result = normalize_mri_result(extracted).model_dump()
         else:
-            extracted = extract_mri_features(
-                mri_text=mri_text,
+            artifacts = extract_features_with_artifacts(
+                text=mri_text,
                 model_name=args.model,
                 print_raw_output=args.print_raw_output,
             )
+            result = artifacts["result"]
     except ModelConfigError as error:
         print(str(error), file=sys.stderr)
         sys.exit(2)
 
-    result = normalize_mri_result(extracted)
-
     print(
         json.dumps(
-            result.model_dump(),
+            result,
             ensure_ascii=False,
             indent=2,
         )

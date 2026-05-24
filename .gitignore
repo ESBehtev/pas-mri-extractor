@@ -213,6 +213,11 @@ tempCodeRunnerFile.py
 # Project runtime config overrides
 runtime_configs/
 
+# Project data/model/eval artifacts
+data/
+outputs/
+models/
+
 # PyPI configuration file
 .pypirc
 

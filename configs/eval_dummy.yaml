@@ -1,0 +1,69 @@
+run_name: dummy
+output_dir: outputs/eval
+model: null
+
+cases:
+  - id: dummy_json_fixture
+    text_file: examples/sample_mri.txt
+    raw_output: |
+      Preliminary text that should be ignored.
+
+      ```json
+      {
+        "schema_version": "1.0",
+        "case_info": {
+          "gestational_week": 34,
+          "previous_cs_count": 2
+        },
+        "extracted_features": {
+          "invasion": {
+            "type": "none",
+            "confidence": "absent"
+          },
+          "anatomy": {
+            "bladder_involvement": "absent",
+            "parametrium_involvement": "absent",
+            "posterior_wall_involvement": "absent"
+          },
+          "placenta_location": {
+            "placenta_previa": "present",
+            "anterior_placenta": "present"
+          },
+          "mri_signs": {
+            "retroplacental_vessels": "absent",
+            "lacunae": "absent",
+            "uterine_wall_thinning": "absent",
+            "uterine_hernia_or_bulging": "absent"
+          },
+          "clinical_context": {
+            "preoperative_bleeding": "absent"
+          }
+        },
+        "evidence": {
+          "positive_findings": [
+            "плацента по передней стенке",
+            "предлежание плаценты"
+          ],
+          "uncertain_findings": [],
+          "negative_findings": [
+            "данных за PAS нет, контрольная строка с фигурными скобками {рубец}"
+          ]
+        }
+      }
+      ```
+
+      Trailing text that should also be ignored.
+    expected:
+      schema_version: "1.0"
+      case_info:
+        gestational_week: 34
+        previous_cs_count: 2
+      extracted_features:
+        invasion:
+          type: none
+          confidence: absent
+        placenta_location:
+          placenta_previa: present
+          anterior_placenta: present
+      score:
+        risk_group: low

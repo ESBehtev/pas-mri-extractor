@@ -11,38 +11,37 @@ from typing import Any
 
 def extract_json_object(text: str) -> dict[str, Any]:
     text = text.strip()
+    decoder = json.JSONDecoder()
 
-    # сначала пробуем распарсить ответ как есть
     try:
-        return json.loads(text)
+        parsed, end = decoder.raw_decode(text)
+        if isinstance(parsed, dict) and not text[end:].strip():
+            return parsed
     except json.JSONDecodeError:
         pass
 
-    # ищем первый JSON-объект вручную
-    start = text.find("{")
+    start_positions = [
+        index for index, char in enumerate(text) if char == "{"
+    ]
 
-    if start == -1:
+    if not start_positions:
         raise ValueError("No JSON object found in model output")
 
-    brace_count = 0
-    end = None
+    last_error: json.JSONDecodeError | None = None
+    for start in start_positions:
+        try:
+            parsed, _ = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError as error:
+            last_error = error
+            continue
 
-    for i in range(start, len(text)):
-        char = text[i]
+        if isinstance(parsed, dict):
+            return parsed
 
-        if char == "{":
-            brace_count += 1
-
-        elif char == "}":
-            brace_count -= 1
-
-            if brace_count == 0:
-                end = i + 1
-                break
-
-    if end is None:
+    if text.rfind("}") < start_positions[0]:
         raise ValueError("Incomplete JSON object in model output")
 
-    json_text = text[start:end]
-
-    return json.loads(json_text)
+    message = "No valid JSON object found in model output"
+    if last_error is not None:
+        message = f"{message}: {last_error.msg}"
+    raise ValueError(message)

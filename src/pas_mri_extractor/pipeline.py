@@ -1,7 +1,10 @@
 from functools import lru_cache
 from typing import Any
 
-from pas_mri_extractor.extractor import extract_mri_features
+from pas_mri_extractor.extractor import (
+    extract_mri_features,
+    extract_mri_features_with_raw,
+)
 from pas_mri_extractor.models import LoadedModel, load_llm
 from pas_mri_extractor.report_sections import split_report_sections
 from pas_mri_extractor.scoring import normalize_mri_result
@@ -25,21 +28,43 @@ def extract_features(
     Извлекает признаки из полного текста MRI-отчёта.
     """
 
+    return extract_features_with_artifacts(
+        text=text,
+        model_name=model_name,
+    )["result"]
+
+
+def extract_features_with_artifacts(
+    text: str,
+    model_name: str | None = None,
+    loaded_model: LoadedModel | None = None,
+    print_raw_output: bool = False,
+) -> dict[str, Any]:
+    """
+    Единая inference-точка для CLI/eval, когда нужны диагностические артефакты.
+    Streamlit продолжает использовать extract_features(), который возвращает
+    только итоговый клинический JSON.
+    """
+
     text = text.strip()
 
     if not text:
         raise ValueError("Пустой текст MRI-отчёта")
 
-    loaded_model = get_cached_model(model_name)
+    if loaded_model is None:
+        loaded_model = get_cached_model(model_name)
 
-    extracted = extract_mri_features(
+    artifacts = extract_mri_features_with_raw(
         mri_text=text,
         loaded_model=loaded_model,
+        print_raw_output=print_raw_output,
     )
+    result = normalize_mri_result(artifacts["validated"])
 
-    result = normalize_mri_result(extracted)
-
-    return result.model_dump()
+    return {
+        **artifacts,
+        "result": result.model_dump(),
+    }
 
 
 def extract_features_dual(

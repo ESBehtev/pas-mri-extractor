@@ -179,6 +179,58 @@ python run_single.py --use-rules --text-file examples/sample_mri.txt
 
 ---
 
+## Batch eval по YAML
+
+Eval-контур читает YAML-конфиг, запускает модель или fixture-output,
+валидирует результат через Pydantic-схему и сохраняет артефакты:
+
+```text
+outputs/eval/<run_name>/
+├── raw/
+├── parsed/
+├── diff/
+├── summary.csv
+└── summary.json
+```
+
+Локальная dummy-проверка без загрузки модели:
+
+```bash
+PYTHONPATH=src python -m pas_mri_extractor.batch_eval \
+  --config configs/eval_dummy.yaml \
+  --fail-on-diff
+```
+
+Пример запуска LLM-eval на сервере:
+
+```bash
+PYTHONPATH=src python -m pas_mri_extractor.batch_eval \
+  --config configs/eval_qwen.yaml \
+  --model qwen_3_6_35b_gguf
+```
+
+Минимальная структура eval YAML:
+
+```yaml
+run_name: qwen_server_eval_001
+output_dir: outputs/eval
+model: qwen_3_6_35b_gguf
+
+cases:
+  - id: case_001
+    text_file: examples/sample_mri.txt
+    expected:
+      extracted_features:
+        invasion:
+          type: none
+          confidence: absent
+```
+
+Для проверки JSON-валидации без модели можно передать `raw_output` в case.
+Если `raw_output` задан, модель не загружается для этого case.
+
+---
+
 ## Передача текста напрямую
 
 ```bash

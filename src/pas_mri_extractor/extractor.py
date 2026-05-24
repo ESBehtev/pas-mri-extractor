@@ -38,6 +38,7 @@ STATUS_VALUES = {
 JSON_PARSE_FAILURE_MARKERS = (
     "No JSON object found in model output",
     "Incomplete JSON object in model output",
+    "No valid JSON object found in model output",
 )
 
 
