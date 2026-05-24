@@ -321,14 +321,14 @@ def render_short_result(title: str, item: dict | None) -> None:
     st.write(f"**Тип врастания:** {ru(invasion.get('type'))}")
     st.write(f"**Уверенность:** {ru(invasion.get('confidence'))}")
     st.write(f"**Группа риска:** {ru(score.get('risk_group'))}")
-    st.write(f"**Score:** {ru(score.get('clinical_score'))}")
+    st.write(f"**Клиническая оценка:** {ru(score.get('clinical_score'))}")
 
 
 DIAGNOSTIC_COMPARISON_FIELDS = [
-    ("Invasion type", ("extracted_features", "invasion", "type")),
-    ("Confidence", ("extracted_features", "invasion", "confidence")),
-    ("Risk group", ("score", "risk_group")),
-    ("Clinical score", ("score", "clinical_score")),
+    ("Тип врастания", ("extracted_features", "invasion", "type")),
+    ("Уверенность", ("extracted_features", "invasion", "confidence")),
+    ("Группа риска", ("score", "risk_group")),
+    ("Клиническая оценка", ("score", "clinical_score")),
 ]
 
 
@@ -430,7 +430,7 @@ def render_report_sections(sections: object | None) -> None:
 
 def render_dual_comparison(dual_result: dict | None) -> None:
     if not dual_result:
-        st.write("Нет данных diagnostic extraction")
+        st.write("Нет данных диагностического извлечения")
         return
 
     items = {
@@ -475,7 +475,7 @@ def render_evidence_highlighting(result: dict, report_text: str | None) -> None:
 
     with st.expander("Подсветка отчёта", expanded=False):
         if not positive_findings and not uncertain_findings and not negative_findings:
-            st.write("Evidence для подсветки нет.")
+            st.write("Фраз для подсветки нет.")
 
         render_html(
             f"""
@@ -538,12 +538,12 @@ def render_summary_cards(result: dict) -> None:
 
 
 def render_suspicion_block(suspicion: dict) -> None:
-    st.subheader("Клиническое подозрение / worst-case suspicion")
+    st.subheader("Клиническое подозрение")
     feature_card(
-        "Worst-case suspicion",
+        "Клиническое подозрение",
         [
             (
-                "Максимально подозреваемая степень",
+                "Наиболее тяжёлый предполагаемый вариант PAS",
                 suspicion.get("highest_suspected_extent", "none"),
                 colorize_invasion(suspicion.get("highest_suspected_extent")),
             ),
@@ -562,14 +562,14 @@ def render_suspicion_block(suspicion: dict) -> None:
 
     rationale = as_list(suspicion.get("rationale"))
     if rationale:
-        with st.expander("Source phrases for suspicion", expanded=False):
+        with st.expander("Фразы, подтверждающие подозрение", expanded=False):
             for phrase in rationale:
                 finding_box(phrase, "#f59e0b")
 
 
 def render_clinical_result(result: dict | None, report_text: str | None = None) -> None:
     if not result:
-        st.info("Вставьте отчёт и нажмите Extract.")
+        st.info("Вставьте отчёт и нажмите «Извлечь признаки».")
         return
 
     case_info = result.get("case_info", {})
@@ -683,7 +683,7 @@ def render_clinical_result(result: dict | None, report_text: str | None = None) 
     uncertain_findings = as_list(evidence.get("uncertain_findings"))
     negative_findings = as_list(evidence.get("negative_findings"))
 
-    with st.expander("Evidence", expanded=False):
+    with st.expander("Подтверждающие фразы", expanded=False):
         col_pos, col_unc, col_neg = st.columns(3)
 
         with col_pos:
@@ -729,7 +729,7 @@ def render_clinical_result(result: dict | None, report_text: str | None = None) 
 
     score_reasons = as_list(score.get("score_reasons"))
     if score_reasons:
-        st.subheader("Причины score")
+        st.subheader("Причины оценки")
         for reason in score_reasons[:3]:
             finding_box(reason, "#64748b")
 
@@ -767,7 +767,7 @@ def render_json_export(result: dict | None) -> None:
         st.info("Нет результата для отображения.")
         return
 
-    with st.expander("Structured JSON", expanded=False):
+    with st.expander("Структурированный JSON", expanded=False):
         st.json(result)
         st.download_button(
             label="Скачать JSON",

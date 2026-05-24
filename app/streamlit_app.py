@@ -85,9 +85,9 @@ with extract_tab:
         )
 
         diagnostic_mode = st.checkbox(
-            "Diagnostic extraction comparison",
+            "Диагностическое сравнение извлечения",
             value=False,
-            help="Run full/body/conclusion extraction for comparison.",
+            help="Сравнить извлечение по полному отчёту, описанию и заключению.",
         )
 
     model_ready = False
@@ -125,10 +125,10 @@ with extract_tab:
             st.session_state["report_text"] = selected_example["report_text"]
 
     text = st.text_area(
-        "Текст MRI-отчёта",
+        "Текст МРТ-отчёта",
         key="report_text",
         height=280,
-        placeholder="Вставьте MRI-отчёт...",
+        placeholder="Вставьте МРТ-отчёт...",
     )
 
     st.button(
@@ -153,7 +153,7 @@ with extract_tab:
             st.stop()
 
         if not text.strip():
-            st.error("Вставьте текст MRI-отчёта")
+            st.error("Вставьте текст МРТ-отчёта")
             clear_extraction_request()
             st.stop()
 

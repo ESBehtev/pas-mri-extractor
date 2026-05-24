@@ -64,13 +64,13 @@ def render_config_studio() -> None:
 
     st.subheader("Конфигурация")
     st.warning(
-        "Override действует только в текущей Streamlit-сессии и не "
-        "записывается в git/файлы."
+        "Переопределение действует только в текущей сессии приложения и не "
+        "записывается в файлы проекта."
     )
-    st.caption("Старые runtime_configs/*.local.yaml игнорируются приложением.")
+    st.caption("Старые локальные YAML-файлы конфигурации игнорируются приложением.")
 
     config_name = st.selectbox(
-        "Config file",
+        "Файл конфигурации",
         CONFIG_FILES,
         key="config_studio_file",
     )
@@ -84,43 +84,43 @@ def render_config_studio() -> None:
     if editor_key not in st.session_state:
         st.session_state[editor_key] = get_editor_text(config_name)
 
-    st.caption(f"Source: `{source_path}`")
+    st.caption(f"Источник: `{source_path}`")
 
     if config_name in st.session_state["config_overrides"]:
-        st.caption("Session override: active")
+        st.caption("Переопределение сессии: активно")
     else:
-        st.caption("Session override: none")
+        st.caption("Переопределение сессии: нет")
 
     action_col1, action_col2 = st.columns(2)
 
     with action_col1:
-        if st.button("Показать исходный config"):
+        if st.button("Показать исходную конфигурацию"):
             st.session_state[show_source_key] = not st.session_state.get(
                 show_source_key,
                 False,
             )
 
     with action_col2:
-        if st.button("Сбросить override сессии"):
+        if st.button("Сбросить переопределение сессии"):
             reset_session_override(config_name)
             st.session_state[editor_key] = source_text
-            st.success("Session override сброшен.")
+            st.success("Переопределение сессии сброшено.")
 
     if st.session_state.get(show_source_key, False):
-        with st.expander("Исходный config", expanded=True):
+        with st.expander("Исходная конфигурация", expanded=True):
             st.code(source_text, language="yaml")
 
     content = st.text_area(
-        "YAML content",
+        "Содержимое YAML",
         key=editor_key,
         height=520,
     )
 
-    if st.button("Сохранить override на время сессии", type="primary"):
+    if st.button("Сохранить переопределение на время сессии", type="primary"):
         try:
             save_session_override(config_name, content)
         except yaml.YAMLError as error:
-            st.error(f"YAML invalid: {error}")
+            st.error(f"Некорректный YAML: {error}")
         else:
-            st.success("Session override сохранён.")
-            st.warning("Override будет применён при следующем extraction.")
+            st.success("Переопределение сессии сохранено.")
+            st.warning("Переопределение будет применено при следующем извлечении.")
