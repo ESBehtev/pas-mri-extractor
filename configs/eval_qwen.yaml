@@ -358,8 +358,8 @@ cases:
 
       extracted_features:
         invasion:
-          type: percreta
-          confidence: possible
+          type: increta
+          confidence: probable
 
         anatomy:
           bladder_involvement: possible
@@ -378,3 +378,8 @@ cases:
 
         clinical_context:
           preoperative_bleeding: absent
+
+      suspicion:
+        highest_suspected_extent: percreta
+        percreta_suspicion: possible
+        bladder_serosa_suspicion: possible

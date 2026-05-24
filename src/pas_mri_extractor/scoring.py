@@ -95,6 +95,7 @@ def normalize_mri_result(result: MRIExtractionResult | dict) -> FullMRIResult:
 
     case_info = result_dict.get("case_info", {})
     extracted = result_dict.get("extracted_features", {})
+    suspicion = result_dict.get("suspicion") or {}
 
     invasion_block = extracted.get("invasion", {})
     anatomy = extracted.get("anatomy", {})
@@ -118,6 +119,7 @@ def normalize_mri_result(result: MRIExtractionResult | dict) -> FullMRIResult:
 
     bleeding = clinical_context.get("preoperative_bleeding", "absent")
     prev_cs = case_info.get("previous_cs_count", None)
+    percreta_suspicion = suspicion.get("percreta_suspicion", "absent")
 
     clinical_score = 0
     reasons = []
@@ -235,6 +237,10 @@ def normalize_mri_result(result: MRIExtractionResult | dict) -> FullMRIResult:
     if invasion == "percreta" and bladder in ["possible", "probable", "present"]:
         red_flag = 1
 
+    if percreta_suspicion in ["possible", "probable", "present"]:
+        red_flag = 1
+        reasons.append(f"подозрение на percreta: {percreta_suspicion}")
+
     if invasion == "percreta":
         clinical_score = max(clinical_score, 8)
 
@@ -254,6 +260,12 @@ def normalize_mri_result(result: MRIExtractionResult | dict) -> FullMRIResult:
 
     if bladder == "present" and invasion == "percreta":
         risk_group = "high"
+
+    if (
+        percreta_suspicion in ["possible", "probable", "present"]
+        and risk_group == "low"
+    ):
+        risk_group = "moderate"
 
     blood_risk, vascular_risk, bladder_risk, blood_loss_range = (
         get_base_risk_prediction(risk_group)

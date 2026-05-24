@@ -290,6 +290,33 @@ def repair_common_model_errors(parsed: dict) -> dict:
 
     parsed["extracted_features"] = extracted_features
 
+    suspicion = parsed.get("suspicion", {})
+    if isinstance(suspicion, dict):
+        suspicion["highest_suspected_extent"] = normalize_invasion_type(
+            suspicion.get("highest_suspected_extent")
+        )
+        for field in [
+            "percreta_suspicion",
+            "bladder_serosa_suspicion",
+        ]:
+            suspicion[field] = normalize_status(suspicion.get(field))
+
+        if (
+            suspicion["highest_suspected_extent"] == "none"
+            and suspicion["percreta_suspicion"] in ["possible", "probable", "present"]
+        ):
+            suspicion["highest_suspected_extent"] = "percreta"
+
+        rationale = suspicion.get("rationale", [])
+        if isinstance(rationale, list):
+            suspicion["rationale"] = [str(item) for item in rationale if str(item)]
+        elif rationale:
+            suspicion["rationale"] = [str(rationale)]
+        else:
+            suspicion["rationale"] = []
+
+        parsed["suspicion"] = suspicion
+
     return parsed
 
 

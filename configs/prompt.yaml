@@ -43,6 +43,12 @@ template: |
         "preoperative_bleeding": "absent"
       }}
     }},
+    "suspicion": {{
+      "highest_suspected_extent": "none",
+      "percreta_suspicion": "absent",
+      "bladder_serosa_suspicion": "absent",
+      "rationale": []
+    }},
     "evidence": {{
       "positive_findings": [],
       "uncertain_findings": [],
@@ -72,6 +78,22 @@ template: |
   - "possible"
   - "probable"
   - "present"
+
+  suspicion.highest_suspected_extent:
+  - "none"
+  - "accreta"
+  - "increta"
+  - "percreta"
+
+  suspicion.percreta_suspicion и suspicion.bladder_serosa_suspicion:
+  - "absent"
+  - "possible"
+  - "probable"
+  - "present"
+
+  suspicion.rationale:
+  - list[str]
+  - только короткие source phrases из исходного MRI-текста
 
   gestational_week:
   - integer
@@ -219,9 +241,11 @@ template: |
   "accreta/increta"
   -> type = "increta"
 
-  "increta с подозрением на percreta"
-  -> type = "percreta"
-  -> confidence = "possible"
+  "МР-картина соответствует increta. Нельзя исключить начальные проявления percreta"
+  -> invasion.type = "increta"
+  -> invasion.confidence = "probable"
+  -> suspicion.highest_suspected_extent = "percreta"
+  -> suspicion.percreta_suspicion = "possible"
 
   "наиболее соответствует increta"
   -> type = "increta"
@@ -253,6 +277,55 @@ template: |
 
   Если invasion.type = "none":
   - invasion.confidence = "absent"
+
+  ============================================================
+  suspicion: WORST-CASE SAFETY ПОДОЗРЕНИЕ
+  ============================================================
+
+  suspicion НЕ заменяет invasion.type.
+  invasion.type — основной наиболее вероятный тип PAS по заключению и описанию.
+  suspicion — худший подозреваемый сценарий, если он сформулирован неопределённо.
+
+  Если основной вывод "increta", но есть:
+  - "нельзя исключить percreta"
+  - "возможная percreta"
+  - "подозрение на percreta"
+  - "без убедительных данных за percreta, однако ..."
+
+  ТО:
+  - НЕ меняй invasion.type на "percreta" только из-за такой фразы
+  - suspicion.highest_suspected_extent = "percreta"
+  - suspicion.percreta_suspicion = "possible"
+
+  Если есть:
+  - "нельзя исключить начальное вовлечение серозы"
+  - "возможное вовлечение серозной оболочки"
+  - "начальное вовлечение маточно-пузырного пространства исключить нельзя"
+  - "возможное вовлечение мочевого пузыря"
+
+  ТО:
+  - suspicion.bladder_serosa_suspicion = "possible"
+  - если это связано с возможной percreta, suspicion.highest_suspected_extent = "percreta"
+  - suspicion.percreta_suspicion = "possible"
+
+  Если есть достоверная инвазия мочевого пузыря, серозы, параметрия,
+  выход за пределы матки или убедительная placenta percreta:
+  - invasion.type = "percreta"
+  - suspicion.highest_suspected_extent = "percreta"
+  - suspicion.percreta_suspicion = "present"
+  - suspicion.bladder_serosa_suspicion = "present", если вовлечён мочевой пузырь или сероза
+
+  Если подозрений нет:
+  - suspicion.highest_suspected_extent = "none"
+  - suspicion.percreta_suspicion = "absent"
+  - suspicion.bladder_serosa_suspicion = "absent"
+  - suspicion.rationale = []
+
+  suspicion.rationale:
+  - только короткие реальные фразы из MRI-текста
+  - без интерпретаций
+  - без score reasons
+  - не добавляй фразы, которых нет в исходном тексте
 
   ============================================================
   ВАЖНО ДЛЯ bladder_involvement

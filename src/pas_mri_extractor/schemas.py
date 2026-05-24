@@ -4,6 +4,7 @@ Pydantic-схемы результата.
 LLM возвращает только:
 - case_info
 - extracted_features
+- suspicion
 - evidence
 
 Скоринг и рекомендации добавляются кодом после валидации результата.
@@ -73,6 +74,13 @@ class Evidence(BaseModel):
     negative_findings: list[str] = Field(default_factory=list)
 
 
+class Suspicion(BaseModel):
+    highest_suspected_extent: InvasionType = "none"
+    percreta_suspicion: FeatureStatus = "absent"
+    bladder_serosa_suspicion: FeatureStatus = "absent"
+    rationale: list[str] = Field(default_factory=list)
+
+
 def reject_legacy_features_payload(data: Any) -> Any:
     if isinstance(data, dict) and "features" in data:
         raise ValueError(
@@ -89,6 +97,7 @@ class MRIExtractionResult(BaseModel):
     schema_version: str = CURRENT_SCHEMA_VERSION
     case_info: CaseInfo
     extracted_features: ExtractedFeatures
+    suspicion: Suspicion = Field(default_factory=Suspicion)
     evidence: Evidence
 
     @model_validator(mode="before")

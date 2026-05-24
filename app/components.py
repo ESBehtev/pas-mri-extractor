@@ -537,6 +537,36 @@ def render_summary_cards(result: dict) -> None:
             )
 
 
+def render_suspicion_block(suspicion: dict) -> None:
+    st.subheader("Клиническое подозрение / worst-case suspicion")
+    feature_card(
+        "Worst-case suspicion",
+        [
+            (
+                "Максимально подозреваемая степень",
+                suspicion.get("highest_suspected_extent", "none"),
+                colorize_invasion(suspicion.get("highest_suspected_extent")),
+            ),
+            (
+                "Подозрение на percreta",
+                suspicion.get("percreta_suspicion", "absent"),
+                None,
+            ),
+            (
+                "Подозрение вовлечения серозы/мочевого пузыря",
+                suspicion.get("bladder_serosa_suspicion", "absent"),
+                None,
+            ),
+        ],
+    )
+
+    rationale = as_list(suspicion.get("rationale"))
+    if rationale:
+        with st.expander("Source phrases for suspicion", expanded=False):
+            for phrase in rationale:
+                finding_box(phrase, "#f59e0b")
+
+
 def render_clinical_result(result: dict | None, report_text: str | None = None) -> None:
     if not result:
         st.info("Вставьте отчёт и нажмите Extract.")
@@ -549,6 +579,7 @@ def render_clinical_result(result: dict | None, report_text: str | None = None) 
     placenta_location = features.get("placenta_location", {})
     mri_signs = features.get("mri_signs", {})
     clinical_context = features.get("clinical_context", {})
+    suspicion = result.get("suspicion") or {}
     evidence = result.get("evidence", {})
     score = result.get("score", {})
     predicted_risks = result.get("predicted_risks", {})
@@ -645,6 +676,8 @@ def render_clinical_result(result: dict | None, report_text: str | None = None) 
                 ),
             ],
         )
+
+    render_suspicion_block(suspicion)
 
     positive_findings = as_list(evidence.get("positive_findings"))
     uncertain_findings = as_list(evidence.get("uncertain_findings"))
