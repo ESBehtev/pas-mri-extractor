@@ -1,0 +1,9 @@
+run_name: qwen3_27b_server_eval
+output_dir: outputs/eval
+model: qwen3_27b_gguf
+
+cases:
+  - id: sample_mri
+    text_file: examples/sample_mri.txt
+    expected:
+      schema_version: "1.0"

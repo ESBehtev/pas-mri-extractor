@@ -4,8 +4,10 @@
 Модель и параметры берутся из configs/models.yaml.
 """
 
+import inspect
+import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,7 @@ from .config import load_config
 
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 QWEN_2_5_FALLBACK_COMMAND = (
@@ -54,6 +57,7 @@ class LoadedModel:
     model: Any
     generation_config: dict[str, Any]
     tokenizer_config: dict[str, Any]
+    output_config: dict[str, Any] = field(default_factory=dict)
 
 
 class ModelConfigError(RuntimeError):
@@ -99,21 +103,27 @@ def get_model_config(model_name: str | None = None) -> tuple[str, dict[str, Any]
 
 
 def resolve_model_path(path_or_id: str) -> Path | None:
-    path = Path(path_or_id)
+    path = Path(path_or_id).expanduser()
 
     if path.is_absolute():
-        return path
+        return path.resolve()
 
     if "/" in path_or_id and not path_or_id.startswith("models/"):
         return None
 
-    return PROJECT_ROOT / path
+    return (PROJECT_ROOT / path).resolve()
 
 
 def get_model_id_or_path(model_cfg: dict[str, Any]) -> str:
-    model_id_or_path = model_cfg.get("model_id_or_path") or model_cfg.get("model_id")
+    model_id_or_path = (
+        model_cfg.get("model_path")
+        or model_cfg.get("model_id_or_path")
+        or model_cfg.get("model_id")
+    )
     if not model_id_or_path:
-        raise ModelConfigError("Model config must define model_id_or_path or model_id.")
+        raise ModelConfigError(
+            "Model config must define model_path, model_id_or_path, or model_id."
+        )
 
     return str(model_id_or_path)
 
@@ -156,13 +166,25 @@ def assert_model_available(model_name: str, model_cfg: dict[str, Any]) -> None:
     if local_path is None or local_path.exists():
         return
 
+    if model_cfg.get("backend") == "llama_cpp":
+        hf_repo = model_cfg.get("hf_repo", model_id_or_path)
+        hf_filename = model_cfg.get("hf_filename")
+        download_command = f"hf download {hf_repo}"
+        if hf_filename:
+            download_command = f"{download_command} {hf_filename}"
+        download_target = local_path.parent if hf_filename else local_path
+        download_command = f"{download_command} --local-dir {download_target}"
+
+        raise ModelConfigError(
+            "GGUF model file not found:\n"
+            f"  {local_path}\n\n"
+            "Please download the model to this location.\n\n"
+            "Download on server:\n"
+            f"{download_command}"
+        )
+
     hf_repo = model_cfg.get("hf_repo", model_id_or_path)
     hf_filename = model_cfg.get("hf_filename")
-    expected_label = (
-        "Expected GGUF model"
-        if model_cfg.get("backend") == "llama_cpp"
-        else "Expected path"
-    )
     download_command = f"hf download {hf_repo}"
     if hf_filename:
         download_command = f"{download_command} {hf_filename}"
@@ -173,7 +195,7 @@ def assert_model_available(model_name: str, model_cfg: dict[str, Any]) -> None:
 
     raise ModelConfigError(
         f"Model {model_name} not found.\n"
-        f"{expected_label}:\n{display_path(local_path)}\n\n"
+        f"Expected path:\n{display_path(local_path)}\n\n"
         f"Download on server:\n"
         f"{download_command}\n\n"
         f"Fallback:\n{QWEN_2_5_FALLBACK_COMMAND}"
@@ -186,27 +208,36 @@ def dry_run_model_config(model_name: str | None = None) -> dict[str, Any]:
     local_path = resolve_model_path(model_id_or_path)
     exists = None if local_path is None else local_path.exists()
     hf_filename = model_cfg.get("hf_filename")
+    output_config = model_cfg.get("output") or {}
+    response_format = output_config.get("response_format")
+    response_format_type = (
+        response_format.get("type") if isinstance(response_format, dict) else None
+    )
     download_command = None
     if local_path is not None and model_cfg.get("hf_repo"):
         download_command = f"hf download {model_cfg.get('hf_repo')}"
         if hf_filename:
             download_command = f"{download_command} {hf_filename}"
         download_target = local_path.parent if hf_filename else local_path
-        download_command = (
-            f"{download_command} --local-dir {display_path(download_target)}"
-        )
+        download_command = f"{download_command} --local-dir {download_target}"
 
     return {
         "model": resolved_name,
         "display_name": model_cfg.get("display_name", resolved_name),
         "backend": model_cfg.get("backend", "transformers"),
         "model_id_or_path": model_id_or_path,
-        "expected_path": display_path(local_path) if local_path is not None else None,
+        "expected_path": str(local_path) if local_path is not None else None,
         "path_exists": exists,
         "hf_repo": model_cfg.get("hf_repo"),
         "hf_filename": hf_filename,
         "download_command": download_command,
         "fallback_command": QWEN_2_5_FALLBACK_COMMAND,
+        "output.enforce_json": bool(output_config.get("enforce_json", False)),
+        "output.response_format.type": response_format_type,
+        "output": {
+            "enforce_json": bool(output_config.get("enforce_json", False)),
+            "response_format": response_format,
+        },
     }
 
 
@@ -282,11 +313,13 @@ def load_llama_cpp_model(
     runtime_config = model_cfg.get("runtime", {})
     generation_config = model_cfg.get("generation", {})
     tokenizer_config = model_cfg.get("tokenizer", {})
+    output_config = model_cfg.get("output", {})
 
     model = Llama(
         model_path=str(model_path),
         n_gpu_layers=int(runtime_config.get("n_gpu_layers", -1)),
         n_ctx=int(runtime_config.get("n_ctx", 4096)),
+        n_batch=int(runtime_config.get("n_batch", 512)),
         verbose=bool(runtime_config.get("verbose", False)),
     )
 
@@ -298,6 +331,7 @@ def load_llama_cpp_model(
         model=model,
         generation_config=generation_config,
         tokenizer_config=tokenizer_config,
+        output_config=output_config if isinstance(output_config, dict) else {},
     )
 
 
@@ -310,6 +344,7 @@ def load_transformers_model(
     model_id = get_model_id_or_path(model_cfg)
     generation_config = model_cfg.get("generation", {})
     tokenizer_config = model_cfg.get("tokenizer", {})
+    output_config = model_cfg.get("output", {})
     runtime_config = model_cfg.get("runtime", {})
     quantization_config = get_quantization_config(model_cfg)
 
@@ -363,6 +398,7 @@ def load_transformers_model(
         model=model,
         generation_config=generation_config,
         tokenizer_config=tokenizer_config,
+        output_config=output_config if isinstance(output_config, dict) else {},
     )
 
 
@@ -427,6 +463,135 @@ def merge_generation_config(
     return generation_config
 
 
+def filter_supported_kwargs(callable_obj: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
+    try:
+        signature = inspect.signature(callable_obj)
+    except (TypeError, ValueError):
+        return kwargs
+
+    if any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    ):
+        return kwargs
+
+    return {
+        key: value
+        for key, value in kwargs.items()
+        if key in signature.parameters
+    }
+
+
+def supports_kwarg(callable_obj: Any, kwarg: str) -> bool:
+    try:
+        signature = inspect.signature(callable_obj)
+    except (TypeError, ValueError):
+        return True
+
+    if any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    ):
+        return True
+
+    return kwarg in signature.parameters
+
+
+def get_llama_cpp_generation_kwargs(
+    generation_config: dict[str, Any],
+) -> dict[str, Any]:
+    max_tokens = generation_config.get(
+        "max_tokens",
+        generation_config.get("max_new_tokens", 3000),
+    )
+
+    kwargs = {
+        "max_tokens": int(max_tokens),
+        "temperature": float(generation_config.get("temperature", 0.0)),
+        "top_p": float(generation_config.get("top_p", 1.0)),
+    }
+
+    repeat_penalty = generation_config.get(
+        "repeat_penalty",
+        generation_config.get("repetition_penalty"),
+    )
+    if repeat_penalty is not None:
+        kwargs["repeat_penalty"] = float(repeat_penalty)
+
+    seed = generation_config.get("seed")
+    if seed is not None:
+        kwargs["seed"] = int(seed)
+
+    return kwargs
+
+
+def get_llama_cpp_response_format(
+    loaded_model: LoadedModel,
+) -> dict[str, Any] | None:
+    output_config = loaded_model.output_config
+    if not output_config.get("enforce_json", False):
+        return None
+
+    response_format = output_config.get("response_format")
+    if not isinstance(response_format, dict):
+        return None
+
+    return response_format
+
+
+def create_llama_cpp_chat_completion(
+    loaded_model: LoadedModel,
+    messages: list[dict[str, str]],
+    generation_kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    create_chat_completion = loaded_model.model.create_chat_completion
+    call_kwargs = filter_supported_kwargs(
+        create_chat_completion,
+        generation_kwargs,
+    )
+    response_format = get_llama_cpp_response_format(loaded_model)
+
+    if response_format is None:
+        return create_chat_completion(
+            messages=messages,
+            **call_kwargs,
+        )
+
+    if not supports_kwarg(create_chat_completion, "response_format"):
+        logger.warning(
+            "response_format not supported by current llama_cpp backend, "
+            "falling back to prompt+postprocessing JSON extraction"
+        )
+        return create_chat_completion(
+            messages=messages,
+            **call_kwargs,
+        )
+
+    logger.info(
+        "Using llama_cpp JSON response_format for model: %s",
+        loaded_model.name,
+    )
+
+    try:
+        return create_chat_completion(
+            messages=messages,
+            response_format=response_format,
+            **call_kwargs,
+        )
+    except TypeError as error:
+        if "response_format" not in str(error):
+            raise
+
+        logger.warning(
+            "response_format not supported by current llama_cpp backend, "
+            "falling back to prompt+postprocessing JSON extraction"
+        )
+        return create_chat_completion(
+            messages=messages,
+            **call_kwargs,
+        )
+
+
 def generate_text(
     loaded_model: LoadedModel,
     prompt: str,
@@ -437,9 +602,7 @@ def generate_text(
 
     if loaded_model.backend == "llama_cpp":
         tokenizer_config = loaded_model.tokenizer_config
-        max_tokens = generation_config.get("max_new_tokens", 3000)
-        temperature = generation_config.get("temperature", 0.0)
-        top_p = generation_config.get("top_p", 1.0)
+        generation_kwargs = get_llama_cpp_generation_kwargs(generation_config)
 
         if tokenizer_config.get("use_chat_template", False) and hasattr(
             loaded_model.model,
@@ -450,7 +613,8 @@ def generate_text(
                 if retry_json
                 else STRICT_JSON_SYSTEM_PROMPT
             )
-            output = loaded_model.model.create_chat_completion(
+            output = create_llama_cpp_chat_completion(
+                loaded_model=loaded_model,
                 messages=[
                     {
                         "role": "system",
@@ -461,17 +625,13 @@ def generate_text(
                         "content": prompt,
                     },
                 ],
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
+                generation_kwargs=generation_kwargs,
             )
             return output["choices"][0]["message"]["content"].strip()
 
         output = loaded_model.model(
             build_llama_cpp_prompt(prompt, retry_json=retry_json),
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
+            **filter_supported_kwargs(loaded_model.model, generation_kwargs),
         )
         return output["choices"][0]["text"].strip()
 

@@ -217,6 +217,9 @@ runtime_configs/
 data/
 outputs/
 models/
+*.gguf
+*.safetensors
+*.bin
 
 # PyPI configuration file
 .pypirc

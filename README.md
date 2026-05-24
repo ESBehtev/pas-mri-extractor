@@ -206,7 +206,7 @@ PYTHONPATH=src python -m pas_mri_extractor.batch_eval \
 ```bash
 PYTHONPATH=src python -m pas_mri_extractor.batch_eval \
   --config configs/eval_qwen.yaml \
-  --model qwen_3_6_35b_gguf
+  --model qwen3_27b_gguf
 ```
 
 Минимальная структура eval YAML:
@@ -214,7 +214,7 @@ PYTHONPATH=src python -m pas_mri_extractor.batch_eval \
 ```yaml
 run_name: qwen_server_eval_001
 output_dir: outputs/eval
-model: qwen_3_6_35b_gguf
+model: qwen3_27b_gguf
 
 cases:
   - id: case_001
@@ -317,6 +317,97 @@ PYTHONPATH=src python run_single.py \
   --model qwen_3_6_35b_gguf \
   --text-file examples/sample_mri.txt
 ```
+
+## Qwen3.6-27B-MTP GGUF на сервере RTX 3090
+
+Новая серверная модель задана в `configs/models.yaml` как:
+
+```text
+qwen3_27b_gguf -> unsloth/Qwen3.6-27B-MTP-GGUF, UD-Q4_K_XL.gguf
+```
+
+Ожидаемый локальный путь на сервере:
+
+```text
+~/pas-mri-extractor/models/Qwen3.6-27B-MTP-GGUF/UD-Q4_K_XL.gguf
+```
+
+Создать каталог:
+
+```bash
+mkdir -p ~/pas-mri-extractor/models/Qwen3.6-27B-MTP-GGUF
+```
+
+Скачать через `wget`:
+
+```bash
+wget -O ~/pas-mri-extractor/models/Qwen3.6-27B-MTP-GGUF/UD-Q4_K_XL.gguf \
+  "https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/resolve/main/UD-Q4_K_XL.gguf?download=true"
+```
+
+Та же команда из каталога модели:
+
+```bash
+cd ~/pas-mri-extractor/models/Qwen3.6-27B-MTP-GGUF
+wget -O UD-Q4_K_XL.gguf \
+  "https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/resolve/main/UD-Q4_K_XL.gguf?download=true"
+```
+
+Или через `curl`:
+
+```bash
+curl -L \
+  -o ~/pas-mri-extractor/models/Qwen3.6-27B-MTP-GGUF/UD-Q4_K_XL.gguf \
+  "https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/resolve/main/UD-Q4_K_XL.gguf?download=true"
+```
+
+Проверить файл:
+
+```bash
+ls -lh ~/pas-mri-extractor/models/Qwen3.6-27B-MTP-GGUF/UD-Q4_K_XL.gguf
+test -s ~/pas-mri-extractor/models/Qwen3.6-27B-MTP-GGUF/UD-Q4_K_XL.gguf
+```
+
+Проверить конфиг без загрузки модели:
+
+```bash
+PYTHONPATH=src python run_single.py \
+  --model qwen3_27b_gguf \
+  --dry-run-model-config
+```
+
+Smoke test с загрузкой модели и короткой JSON-генерацией:
+
+```bash
+PYTHONPATH=src python -m pas_mri_extractor.smoke_test_llama_cpp \
+  --model qwen3_27b_gguf
+```
+
+Batch eval:
+
+```bash
+PYTHONPATH=src python -m pas_mri_extractor.batch_eval \
+  --config configs/eval_qwen.yaml \
+  --model qwen3_27b_gguf
+```
+
+При OOM на RTX 3090:
+
+- уменьшить `runtime.n_ctx` в `configs/models.yaml` с `8192` до `4096`;
+- уменьшить `generation.max_tokens` / `generation.max_new_tokens` с `2048`;
+- уменьшить `runtime.n_gpu_layers`, например с `-1` до `60`, затем ниже;
+- оставить `runtime.n_batch: 512` или уменьшить до `256`.
+
+Проверить, что модель использует GPU:
+
+```bash
+watch -n 1 nvidia-smi
+```
+
+Во время smoke test или batch eval должен расти VRAM usage процесса Python.
+Для подробных логов llama.cpp можно временно поставить `runtime.verbose: true`
+у модели `qwen3_27b_gguf`; в stderr должны появляться строки про offload слоёв
+на GPU.
 
 Streamlit:
 
