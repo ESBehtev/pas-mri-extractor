@@ -44,3 +44,167 @@ cases:
 
         clinical_context:
           preoperative_bleeding: absent
+
+  - id: pas_absent_001
+
+    text: |
+      МРТ малого таза. Беременность 32 недели. Состояние после одного кесарева сечения.
+
+      Плацента расположена по задней стенке матки, нижний край плаценты расположен выше внутреннего зева, признаков предлежания нет. Толщина миометрия в области послеоперационного рубца сохранена, ретроплацентарная зона прослеживается отчетливо.
+
+      Лакун неправильной формы в структуре плаценты не выявлено. Расширенных извитых сосудов в ретроплацентарной зоне не определяется. Граница между плацентой и миометрием четкая.
+
+      Маточно-пузырное пространство свободно, стенка мочевого пузыря без признаков инвазии. Признаков выхода процесса в параметрий нет. Грыжевидного выбухания стенки матки не выявлено. Признаков активного кровотечения нет.
+
+      Заключение: МР-признаков placenta accreta spectrum не выявлено.
+
+    expected:
+      case_info:
+        gestational_week: 32
+        previous_cs_count: 1
+
+      extracted_features:
+        invasion:
+          type: none
+          confidence: absent
+
+        anatomy:
+          bladder_involvement: absent
+          parametrium_involvement: absent
+          posterior_wall_involvement: absent
+
+        placenta_location:
+          placenta_previa: absent
+          anterior_placenta: absent
+
+        mri_signs:
+          retroplacental_vessels: absent
+          lacunae: absent
+          uterine_wall_thinning: absent
+          uterine_hernia_or_bulging: absent
+
+        clinical_context:
+          preoperative_bleeding: absent
+
+  - id: accreta_case_001
+
+    text: |
+      МРТ малого таза. Беременность 35 недель. Состояние после одного кесарева сечения.
+
+      Плацента расположена по передней стенке матки, нижний край перекрывает область внутреннего зева. В нижнем сегменте матки в проекции рубца ретроплацентарная зона местами истончена, однако миометрий прослеживается.
+
+      В плаценте определяются отдельные лакуны неправильной формы. В ретроплацентарной зоне визуализируются умеренно расширенные сосуды. Граница между плацентой и миометрием местами нечеткая, без признаков глубокого прорастания в толщу миометрия.
+
+      Маточно-пузырное пространство сохранено. Признаков инвазии стенки мочевого пузыря нет. Параметрий не вовлечен. Грыжевидного выбухания матки не определяется. Признаков кровотечения нет.
+
+      Заключение: МР-картина соответствует placenta accreta в области нижнего сегмента матки.
+
+    expected:
+      case_info:
+        gestational_week: 35
+        previous_cs_count: 1
+
+      extracted_features:
+        invasion:
+          type: accreta
+          confidence: probable
+
+        anatomy:
+          bladder_involvement: absent
+          parametrium_involvement: absent
+          posterior_wall_involvement: absent
+
+        placenta_location:
+          placenta_previa: present
+          anterior_placenta: present
+
+        mri_signs:
+          retroplacental_vessels: present
+          lacunae: present
+          uterine_wall_thinning: present
+          uterine_hernia_or_bulging: absent
+
+        clinical_context:
+          preoperative_bleeding: absent
+
+  - id: percreta_bladder_001
+
+    text: |
+      МРТ малого таза. Беременность 33 недели. Состояние после трех кесаревых сечений.
+
+      Плацента расположена по передней стенке матки с полным предлежанием. В области послеоперационного рубца миометрий резко истончен, на отдельных участках не визуализируется. Определяется грыжевидное выбухание нижнего сегмента матки в сторону мочевого пузыря.
+
+      В структуре плаценты множественные крупные лакуны неправильной формы. В ретроплацентарной зоне выраженные расширенные извитые сосуды. Граница между плацентой и миометрием отсутствует на протяжении рубца.
+
+      Маточно-пузырное пространство не дифференцируется. Определяются признаки вовлечения серозы и мышечной стенки мочевого пузыря, стенка пузыря деформирована. Данных за распространение в параметрий не получено. Свободной жидкости нет. Активного кровотечения на момент исследования нет.
+
+      Заключение: МР-картина соответствует placenta percreta с вовлечением стенки мочевого пузыря.
+
+    expected:
+      case_info:
+        gestational_week: 33
+        previous_cs_count: 3
+
+      extracted_features:
+        invasion:
+          type: percreta
+          confidence: probable
+
+        anatomy:
+          bladder_involvement: present
+          parametrium_involvement: absent
+          posterior_wall_involvement: absent
+
+        placenta_location:
+          placenta_previa: present
+          anterior_placenta: present
+
+        mri_signs:
+          retroplacental_vessels: present
+          lacunae: present
+          uterine_wall_thinning: present
+          uterine_hernia_or_bulging: present
+
+        clinical_context:
+          preoperative_bleeding: absent
+
+  - id: uncertain_bladder_001
+
+    text: |
+      МРТ малого таза. Беременность 34 недели. Состояние после двух кесаревых сечений.
+
+      Плацента по передней стенке матки, нижний край частично перекрывает внутренний зев. В проекции послеоперационного рубца миометрий выраженно истончен, местами определяется нечеткость границы между плацентой и миометрием.
+
+      В толще плаценты имеются лакуны неправильной формы. Ретроплацентарно определяются расширенные сосуды. Убедительных признаков полного прорастания через стенку матки не получено.
+
+      Маточно-пузырное пространство резко сужено. Достоверной инвазии стенки мочевого пузыря не выявлено, однако начальное вовлечение серозной оболочки исключить нельзя. Параметрий без признаков вовлечения. Грыжевидного выбухания стенки матки нет. Признаков активного кровотечения нет.
+
+      Заключение: МР-признаки возможной placenta increta в области рубца. Возможное начальное вовлечение маточно-пузырного пространства без убедительных данных за percreta.
+
+    expected:
+      case_info:
+        gestational_week: 34
+        previous_cs_count: 2
+
+      extracted_features:
+        invasion:
+          type: increta
+          confidence: possible
+
+        anatomy:
+          bladder_involvement: possible
+          parametrium_involvement: absent
+          posterior_wall_involvement: absent
+
+        placenta_location:
+          placenta_previa: present
+          anterior_placenta: present
+
+        mri_signs:
+          retroplacental_vessels: present
+          lacunae: present
+          uterine_wall_thinning: present
+          uterine_hernia_or_bulging: absent
+
+        clinical_context:
+          preoperative_bleeding: absent
