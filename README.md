@@ -226,6 +226,23 @@ cases:
           confidence: absent
 ```
 
+Inline text вместо `text_file`:
+
+```yaml
+cases:
+  - id: inline_case_001
+    text: |
+      МРТ малого таза. Беременность 34 недели.
+      Плацента по передней стенке, признаков врастания не выявлено.
+    expected:
+      extracted_features:
+        invasion:
+          type: none
+          confidence: absent
+```
+
+В одном case нужно указывать либо `text`, либо `text_file`, но не оба поля.
+
 Для проверки JSON-валидации без модели можно передать `raw_output` в case.
 Если `raw_output` задан, модель не загружается для этого case.
 

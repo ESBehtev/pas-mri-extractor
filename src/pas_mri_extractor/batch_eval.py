@@ -96,11 +96,19 @@ def resolve_path(path_value: str, config_path: Path) -> Path:
     return PROJECT_ROOT / path
 
 
-def read_case_text(case: dict[str, Any], config_path: Path) -> str:
-    if case.get("text") is not None:
+def read_case_text(case: dict[str, Any], config_path: Path, case_id: str) -> str:
+    has_text = "text" in case and case.get("text") is not None
+    has_text_file = "text_file" in case and case.get("text_file")
+
+    if has_text and has_text_file:
+        raise ValueError(
+            f"Case {case_id}: specify either 'text' or 'text_file', not both."
+        )
+
+    if has_text:
         return str(case["text"])
 
-    if case.get("text_file"):
+    if has_text_file:
         text_path = resolve_path(str(case["text_file"]), config_path)
         with text_path.open("r", encoding="utf-8") as file:
             return file.read()
@@ -235,7 +243,7 @@ def evaluate_case(
         if case.get("raw_output") is not None:
             artifacts = parse_fixture_output(str(case["raw_output"]))
         else:
-            text = read_case_text(case, config_path)
+            text = read_case_text(case, config_path, case_id)
             if not text.strip():
                 raise ValueError(f"Case {case_id}: empty MRI text.")
 
