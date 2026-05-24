@@ -208,3 +208,173 @@ cases:
 
         clinical_context:
           preoperative_bleeding: absent
+
+  - id: focal_accreta_subtle_001
+
+    text: |
+      МРТ малого таза. Беременность 31 неделя. Состояние после одного кесарева сечения.
+
+      Плацента расположена по передней стенке матки с распространением на область нижнего сегмента. Нижний край плаценты достигает внутреннего зева без полного перекрытия.
+
+      В проекции послеоперационного рубца определяется локальное нарушение четкости границы между плацентой и миометрием. Миометрий в данной зоне неравномерно истончен до 1–2 мм, однако на всем протяжении прослеживается.
+
+      Определяются единичные лакуны в толще плаценты. Умеренно выраженные ретроплацентарные сосуды без формирования грубых сосудистых конгломератов.
+
+      Маточно-пузырное пространство сохранено. Признаков инвазии в мочевой пузырь и параметрий не выявлено. Грыжевидного выбухания стенки матки не определяется.
+
+      Заключение: МР-признаки могут соответствовать focal placenta accreta в области послеоперационного рубца.
+
+    expected:
+      case_info:
+        gestational_week: 31
+        previous_cs_count: 1
+
+      extracted_features:
+        invasion:
+          type: accreta
+          confidence: possible
+
+        anatomy:
+          bladder_involvement: absent
+          parametrium_involvement: absent
+          posterior_wall_involvement: absent
+
+        placenta_location:
+          placenta_previa: absent
+          anterior_placenta: present
+
+        mri_signs:
+          retroplacental_vessels: present
+          lacunae: present
+          uterine_wall_thinning: present
+          uterine_hernia_or_bulging: absent
+
+        clinical_context:
+          preoperative_bleeding: absent
+
+  - id: posterior_percreta_parametrium_001
+
+    text: |
+      МРТ малого таза. Беременность 35 недель. Состояние после трех кесаревых сечений.
+
+      Плацента преимущественно расположена по задней стенке матки с распространением на нижний сегмент и область внутреннего зева. Отмечается частичное предлежание плаценты.
+
+      В нижних отделах задней стенки определяется практически полное отсутствие визуализации миометрия на протяжении до 4 см. Контур матки в данной зоне выбухает кзади.
+
+      В толще плаценты множественные крупные лакуны неправильной формы. В ретроплацентарной зоне выраженные расширенные сосудистые структуры с распространением в параметральную клетчатку.
+
+      Отмечается нечеткость наружного контура матки с вероятным выходом патологического процесса за пределы серозной оболочки. Участками определяется тяжистость и инфильтрация параметрия. Признаков инвазии мочевого пузыря не выявлено.
+
+      Заключение: МР-картина наиболее соответствует placenta percreta с вероятным вовлечением параметрия.
+
+    expected:
+      case_info:
+        gestational_week: 35
+        previous_cs_count: 3
+
+      extracted_features:
+        invasion:
+          type: percreta
+          confidence: probable
+
+        anatomy:
+          bladder_involvement: absent
+          parametrium_involvement: probable
+          posterior_wall_involvement: present
+
+        placenta_location:
+          placenta_previa: present
+          anterior_placenta: absent
+
+        mri_signs:
+          retroplacental_vessels: present
+          lacunae: present
+          uterine_wall_thinning: present
+          uterine_hernia_or_bulging: present
+
+        clinical_context:
+          preoperative_bleeding: absent
+
+  - id: false_positive_scar_thinning_001
+
+    text: |
+      МРТ малого таза. Беременность 33 недели. Состояние после двух кесаревых сечений.
+
+      Плацента расположена по передней стенке матки, без признаков предлежания. Структура плаценты относительно однородная.
+
+      В области послеоперационного рубца определяется умеренное истончение миометрия до 2 мм без нарушения непрерывности стенки матки. Четкая гипоинтенсивная ретроплацентарная зона прослеживается на всем протяжении.
+
+      Лакунарная перестройка плаценты не определяется. Патологически расширенных ретроплацентарных сосудов не выявлено. Маточно-пузырное пространство сохранено.
+
+      Достоверных МР-признаков placenta accreta spectrum не получено. Выявленные изменения могут соответствовать рубцовым изменениям после кесарева сечения.
+
+    expected:
+      case_info:
+        gestational_week: 33
+        previous_cs_count: 2
+
+      extracted_features:
+        invasion:
+          type: none
+          confidence: absent
+
+        anatomy:
+          bladder_involvement: absent
+          parametrium_involvement: absent
+          posterior_wall_involvement: absent
+
+        placenta_location:
+          placenta_previa: absent
+          anterior_placenta: present
+
+        mri_signs:
+          retroplacental_vessels: absent
+          lacunae: absent
+          uterine_wall_thinning: present
+          uterine_hernia_or_bulging: absent
+
+        clinical_context:
+          preoperative_bleeding: absent
+
+  - id: equivocal_increta_vs_percreta_001
+
+    text: |
+      МРТ малого таза. Беременность 34 недели. Два кесаревых сечения в анамнезе.
+
+      Плацента расположена по передней стенке матки с полным предлежанием. В области послеоперационного рубца определяется выраженное истончение миометрия, местами миометрий практически не дифференцируется.
+
+      В плаценте множественные лакуны и выраженные извитые ретроплацентарные сосуды. Маточно-пузырное пространство локально не прослеживается.
+
+      Стенка мочевого пузыря на ограниченном участке прилежит к матке без четкой жировой прослойки. Убедительных признаков инвазии в стенку мочевого пузыря не получено, однако полностью исключить начальное врастание невозможно.
+
+      Признаков распространения процесса в параметрий не выявлено. Грыжевидное выбухание нижнего сегмента матки определяется умеренно.
+
+      Заключение: МР-картина соответствует placenta increta. Нельзя исключить начальные проявления placenta percreta с вовлечением мочевого пузыря.
+
+    expected:
+      case_info:
+        gestational_week: 34
+        previous_cs_count: 2
+
+      extracted_features:
+        invasion:
+          type: percreta
+          confidence: possible
+
+        anatomy:
+          bladder_involvement: possible
+          parametrium_involvement: absent
+          posterior_wall_involvement: absent
+
+        placenta_location:
+          placenta_previa: present
+          anterior_placenta: present
+
+        mri_signs:
+          retroplacental_vessels: present
+          lacunae: present
+          uterine_wall_thinning: present
+          uterine_hernia_or_bulging: present
+
+        clinical_context:
+          preoperative_bleeding: absent
