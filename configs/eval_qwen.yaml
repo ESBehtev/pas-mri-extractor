@@ -1,9 +1,45 @@
-run_name: qwen3_27b_server_eval
-output_dir: outputs/eval
-model: qwen3_27b_gguf
+run_name: qwen_eval
 
 cases:
-  - id: sample_mri
-    text_file: examples/sample_mri.txt
+  - id: increta_case_001
+
+    input_text: |
+      МРТ малого таза. Беременность 34 недели. Состояние после двух кесаревых сечений.
+
+      Плацента расположена преимущественно по передней стенке матки, нижний край плаценты достигает области внутреннего зева, местами частично его перекрывает. В зоне послеоперационного рубца определяется выраженное истончение миометрия, на отдельных участках миометрий практически не прослеживается.
+
+      В толще плаценты визуализируются множественные лакуны неправильной формы. В ретроплацентарной зоне определяются расширенные извитые сосуды. Граница между плацентой и миометрием в области рубца нечеткая.
+
+      Маточно-пузырное пространство в нижнем сегменте местами резко сужено и частично не дифференцируется, однако достоверных признаков инвазии стенки мочевого пузыря не получено. Нельзя исключить начальное вовлечение серозной оболочки. Признаков выхода процесса в параметрий не выявлено.
+
+      Данных за грыжевидное выбухание стенки матки нет. Свободной жидкости в малом тазу нет. Признаков активного кровотечения на момент исследования не определяется.
+
+      Заключение: МР-картина наиболее соответствует placenta increta в области послеоперационного рубца. Признаки возможного начального вовлечения маточно-пузырного пространства без убедительных данных за placenta percreta.
+
     expected:
-      schema_version: "1.0"
+      case_info:
+        gestational_week: 34
+        previous_cs_count: 2
+
+      extracted_features:
+        invasion:
+          type: increta
+          confidence: probable
+
+        anatomy:
+          bladder_involvement: possible
+          parametrium_involvement: absent
+          posterior_wall_involvement: absent
+
+        placenta_location:
+          placenta_previa: present
+          anterior_placenta: present
+
+        mri_signs:
+          retroplacental_vessels: present
+          lacunae: present
+          uterine_wall_thinning: present
+          uterine_hernia_or_bulging: absent
+
+        clinical_context:
+          preoperative_bleeding: absent
