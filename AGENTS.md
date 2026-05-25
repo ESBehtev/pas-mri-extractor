@@ -20,6 +20,7 @@ Do not run locally:
 - model inference
 - training scripts
 - GPU workloads
+- heavy GGUF model loading
 - long-running scripts
 - data processing over real MRI datasets
 - commands that require real medical data
@@ -34,6 +35,7 @@ Allowed locally:
 - update documentation
 - update configs
 - make small code changes
+- dry-run model config checks only
 - suggest commands for the user to run on the server
 
 Ask before running:
@@ -55,6 +57,10 @@ Expected workflow:
 5. User runs tests/app/inference on the server.
 6. User sends logs/results back.
 7. Agent proposes the next change.
+
+Local agents should use dry-run checks only for GGUF configs. Real inference,
+smoke tests, batch eval with model loading, and Streamlit runtime checks happen
+on the server.
 
 ## Stack
 
@@ -102,8 +108,11 @@ Expected ignored folders:
 - Keep functions small and testable.
 - Avoid unnecessary abstractions.
 - Do not rewrite large parts of the project without explicit approval.
-- Do not change public JSON schemas unless explicitly requested.
+- Do not change public JSON schemas without an explicit migration/backward compatibility plan.
 - Do not silently change clinical scoring logic.
+- Do not break existing eval configs or output artifact structure.
+- Do not change prompt enums without an explicit schema/eval update.
+- Preserve backward compatibility for older extraction payloads.
 
 ## Medical logic rules
 
@@ -118,6 +127,16 @@ When editing clinical extraction or scoring logic:
 - Do not overstate diagnostic confidence.
 - Do not remove conservative safety checks.
 
+## Model lifecycle and VRAM safety
+
+- Keep only one heavyweight model loaded per Python process.
+- When switching models, unload the previous model before loading the next one.
+- For `llama_cpp` objects, call `.close()` when available.
+- Clear local references, run `gc.collect()`, and call `torch.cuda.empty_cache()` when CUDA is available.
+- Do not add hidden `st.cache_resource` or global singleton paths that can keep old GGUF, tokenizer, or transformers objects alive.
+- Treat Streamlit multi-session model switching as a server-side VRAM risk; changes to lifecycle code must be reviewed carefully.
+- Do not claim a GGUF model is "tested" or "verified" if only `--dry-run-model-config` was executed.
+
 ## Useful server commands for the user
 
 Run Streamlit on server:
@@ -129,7 +148,7 @@ streamlit run app/streamlit_app.py --server.port 8501
 Run single example on server:
 
 ```bash
-python run_single.py --model qwen_3_6_35b_gguf --text-file examples/sample_mri.txt
+PYTHONPATH=src python run_single.py --model qwen3_27b_q4_k_m_gguf --text-file examples/sample_mri.txt
 ```
 
 Check git state:

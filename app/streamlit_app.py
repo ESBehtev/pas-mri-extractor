@@ -38,8 +38,8 @@ st.set_page_config(
 
 init_session_state()
 
-st.title("PAS MRI Extractor")
-st.caption("Структурированное извлечение признаков из MRI-отчётов")
+st.title("Извлечение признаков PAS по МРТ")
+st.caption("Структурированное извлечение признаков из МРТ-отчётов")
 
 
 with st.sidebar:

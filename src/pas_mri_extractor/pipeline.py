@@ -1,12 +1,13 @@
 import gc
 import logging
+from threading import RLock
 from typing import Any
 
 from pas_mri_extractor.extractor import (
     extract_mri_features,
     extract_mri_features_with_raw,
 )
-from pas_mri_extractor.models import LoadedModel, load_llm
+from pas_mri_extractor.models import LoadedModel, load_llm, resolve_model_name
 from pas_mri_extractor.report_sections import split_report_sections
 from pas_mri_extractor.scoring import normalize_mri_result
 
@@ -14,6 +15,7 @@ from pas_mri_extractor.scoring import normalize_mri_result
 logger = logging.getLogger(__name__)
 _CURRENT_MODEL: LoadedModel | None = None
 _CURRENT_MODEL_NAME: str | None = None
+_MODEL_LOCK = RLock()
 
 
 def clear_cuda_cache() -> None:
@@ -40,28 +42,30 @@ def unload_current_model() -> None:
 
     global _CURRENT_MODEL, _CURRENT_MODEL_NAME
 
-    if _CURRENT_MODEL is None:
-        clear_cuda_cache()
+    with _MODEL_LOCK:
+        if _CURRENT_MODEL is None:
+            clear_cuda_cache()
+            gc.collect()
+            return
+
+        loaded_model = _CURRENT_MODEL
+        model_name = _CURRENT_MODEL_NAME or loaded_model.name
+
+        _CURRENT_MODEL = None
+        _CURRENT_MODEL_NAME = None
+
+        try:
+            close_model_object(loaded_model.model)
+        except Exception as error:
+            logger.warning("Failed to close model %s: %s", model_name, error)
+
+        loaded_model.model = None
+        loaded_model.tokenizer = None
+
+        del loaded_model
         gc.collect()
-        return
-
-    loaded_model = _CURRENT_MODEL
-    model_name = _CURRENT_MODEL_NAME or loaded_model.name
-
-    try:
-        close_model_object(loaded_model.model)
-    except Exception as error:
-        logger.warning("Failed to close model %s: %s", model_name, error)
-
-    loaded_model.model = None
-    loaded_model.tokenizer = None
-    _CURRENT_MODEL = None
-    _CURRENT_MODEL_NAME = None
-
-    del loaded_model
-    gc.collect()
-    logger.debug("model unloaded: %s", model_name)
-    clear_cuda_cache()
+        logger.debug("model unloaded: %s", model_name)
+        clear_cuda_cache()
 
 
 def get_cached_model(model_name: str | None) -> LoadedModel:
@@ -72,13 +76,19 @@ def get_cached_model(model_name: str | None) -> LoadedModel:
 
     global _CURRENT_MODEL, _CURRENT_MODEL_NAME
 
-    if _CURRENT_MODEL is not None and _CURRENT_MODEL_NAME == model_name:
-        return _CURRENT_MODEL
+    resolved_model_name = resolve_model_name(model_name)
 
-    unload_current_model()
-    _CURRENT_MODEL = load_llm(model_name)
-    _CURRENT_MODEL_NAME = model_name
-    return _CURRENT_MODEL
+    with _MODEL_LOCK:
+        if (
+            _CURRENT_MODEL is not None
+            and _CURRENT_MODEL_NAME == resolved_model_name
+        ):
+            return _CURRENT_MODEL
+
+        unload_current_model()
+        _CURRENT_MODEL = load_llm(resolved_model_name)
+        _CURRENT_MODEL_NAME = _CURRENT_MODEL.name
+        return _CURRENT_MODEL
 
 
 def extract_features(

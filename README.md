@@ -1,239 +1,121 @@
 # pas-mri-extractor
 
-LLM-пайплайн для извлечения признаков PAS (placenta accreta spectrum) из текстовых описаний МРТ.
+Локальный пайплайн для извлечения структурированных признаков PAS из текстовых
+описаний МРТ. Проект валидирует JSON через Pydantic, рассчитывает клинические
+риски и поддерживает Streamlit-интерфейс для просмотра результата.
 
-Проект:
-- извлекает структурированные признаки из МРТ,
-- валидирует результат через Pydantic,
-- рассчитывает клинический риск,
-- формирует итоговую рекомендацию.
+`extracted_features.invasion` хранит основной извлеченный тип PAS.
+`suspicion` хранит отдельный safety-блок для неопределенных формулировок
+вроде "нельзя исключить percreta" и не подменяет `invasion.type`.
 
-`extracted_features.invasion` хранит основной извлечённый тип PAS.
-`suspicion` хранит отдельный worst-case safety блок для неопределённых
-формулировок вроде "нельзя исключить percreta" и не подменяет основной
-`invasion.type`.
-
----
-
-# Возможности
-
-- LLM-based извлечение признаков
-- Rule-based fallback через regex
-- Валидация JSON через Pydantic
-- Расчёт клинических рисков
-- Конфиги моделей и prompt вынесены в YAML
-- Примеры запуска в Jupyter Notebook
-
----
-
-# Структура проекта
-
-```text
-pas-mri-extractor/
-├── configs/
-│   ├── models.yaml
-│   ├── prompt.yaml
-│   ├── risk_score.yaml
-│   └── rules.yaml
-│
-├── examples/
-│   └── sample_mri.txt
-│
-├── app/
-│   └── streamlit_app.py
-│
-├── notebooks/
-│   └── 01_example_runs.ipynb
-│
-├── src/
-│   └── pas_mri_extractor/
-│       ├── config.py
-│       ├── extractor.py
-│       ├── json_utils.py
-│       ├── models.py
-│       ├── prompts.py
-│       ├── rules.py
-│       ├── scoring.py
-│       └── schemas.py
-│
-├── run_single.py
-├── requirements.txt
-└── pyproject.toml
-```
-
----
-
-# Установка
-
-## Клонирование репозитория
+## Установка
 
 ```bash
 git clone https://github.com/ESBehtev/pas-mri-extractor.git
 cd pas-mri-extractor
-```
-
----
-
-## Создание виртуального окружения
-
-### macOS / Linux
-
-```bash
 python -m venv .venv
 source .venv/bin/activate
-```
-
-### Windows
-
-```powershell
-python -m venv .venv
-.venv\Scripts\activate
-```
-
----
-
-## Установка зависимостей
-
-```bash
 pip install -r requirements.txt
 pip install -e .
 ```
 
----
+Для llama.cpp backend на сервере должен быть установлен `llama-cpp-python`.
 
-# HuggingFace токен
+## Актуальные модели
 
-В корне проекта создайте файл:
+Модели описаны в `configs/models.yaml`.
 
-```text
-.env
-```
-
-Содержимое:
+Production default:
 
 ```text
-HF_TOKEN=your_huggingface_token
+qwen3_27b_q4_k_m_gguf
 ```
 
-Токену достаточно read-доступа к моделям HuggingFace.
-
----
-
-# Запуск
-
-## Запуск Streamlit-интерфейса
-
-```bash
-streamlit run app/streamlit_app.py
-```
-
----
-
-## Запуск через LLM
-
-```bash
-python run_single.py --text-file examples/sample_mri.txt
-```
-
-Модель можно выбрать явно:
-
-```bash
-python run_single.py \
-  --model qwen_3_6_35b_gguf \
-  --text-file examples/sample_mri.txt
-```
-
-Или через переменную окружения:
-
-```bash
-PAS_MODEL=qwen_3_6_35b_gguf python run_single.py --text-file examples/sample_mri.txt
-```
-
-Проверить конфиг и наличие локальной модели без загрузки весов в GPU:
-
-```bash
-PYTHONPATH=src python run_single.py \
-  --model qwen_3_6_35b_gguf \
-  --dry-run-model-config
-```
-
-Для отладки JSON-ответа модели:
-
-```bash
-PYTHONPATH=src python run_single.py \
-  --model qwen_3_6_35b_gguf \
-  --text-file examples/sample_mri.txt \
-  --print-raw-output
-```
-
-То же самое через env:
-
-```bash
-PAS_PRINT_RAW_OUTPUT=1 PYTHONPATH=src python run_single.py \
-  --model qwen_3_6_35b_gguf \
-  --text-file examples/sample_mri.txt
-```
-
----
-
-## Запуск только через regex-правила
-
-```bash
-python run_single.py --use-rules --text-file examples/sample_mri.txt
-```
-
----
-
-## Batch eval по YAML
-
-Eval-контур читает YAML-конфиг, запускает модель или fixture-output,
-валидирует результат через Pydantic-схему и сохраняет артефакты:
+Дополнительная GGUF-модель:
 
 ```text
-outputs/eval/<run_name>/
-├── raw/
-├── parsed/
-├── diff/
-├── summary.csv
-└── summary.json
+qwen3_6_35b_a3b_gguf
 ```
 
-Локальная dummy-проверка без загрузки модели:
+Fallback без GGUF:
+
+```text
+qwen_2_5_7b
+```
+
+Локальный dry-run только валидирует конфиг и показывает resolved path.
+Реальная загрузка GGUF локально не выполняется.
 
 ```bash
-PYTHONPATH=src python -m pas_mri_extractor.batch_eval \
-  --config configs/eval_dummy.yaml \
-  --fail-on-diff
+PYTHONPATH=src python run_single.py --model qwen3_27b_q4_k_m_gguf --dry-run-model-config
+PYTHONPATH=src python run_single.py --model qwen3_6_35b_a3b_gguf --dry-run-model-config
 ```
 
-Пример запуска LLM-eval на сервере:
+## Скачивание GGUF на сервере
+
+27B Q4_K_M:
+
+```bash
+mkdir -p ~/pas-mri-extractor/models/Qwen3.6-27B-GGUF
+cd ~/pas-mri-extractor/models/Qwen3.6-27B-GGUF
+hf download unsloth/Qwen3.6-27B-GGUF Qwen3.6-27B-Q4_K_M.gguf --local-dir .
+test -s ~/pas-mri-extractor/models/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf
+```
+
+35B-A3B UD-Q4_K_M:
+
+```bash
+mkdir -p ~/pas-mri-extractor/models/Qwen3.6-35B-A3B-GGUF
+cd ~/pas-mri-extractor/models/Qwen3.6-35B-A3B-GGUF
+hf download unsloth/Qwen3.6-35B-A3B-GGUF Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --local-dir .
+test -s ~/pas-mri-extractor/models/Qwen3.6-35B-A3B-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+```
+
+## Запуск на сервере
+
+Streamlit:
+
+```bash
+PYTHONPATH=src streamlit run app/streamlit_app.py --server.port 8501
+```
+
+Smoke test GGUF:
+
+```bash
+PYTHONPATH=src python -m pas_mri_extractor.smoke_test_llama_cpp --model qwen3_27b_q4_k_m_gguf
+PYTHONPATH=src python -m pas_mri_extractor.smoke_test_llama_cpp --model qwen3_6_35b_a3b_gguf
+```
+
+Batch eval:
 
 ```bash
 PYTHONPATH=src python -m pas_mri_extractor.batch_eval \
   --config configs/eval_qwen.yaml \
   --model qwen3_27b_q4_k_m_gguf
+
+PYTHONPATH=src python -m pas_mri_extractor.batch_eval \
+  --config configs/eval_qwen.yaml \
+  --model qwen3_6_35b_a3b_gguf
 ```
 
-Минимальная структура eval YAML:
+Single report:
+
+```bash
+PYTHONPATH=src python run_single.py \
+  --model qwen3_27b_q4_k_m_gguf \
+  --text-file examples/sample_mri.txt
+```
+
+## Batch eval YAML
+
+Eval сохраняет raw output, parsed JSON, diff и summary в `outputs/eval/<run_name>/`.
+Case может использовать `text_file` или inline `text`, но не оба поля.
 
 ```yaml
-run_name: qwen_server_eval_001
+run_name: qwen_server_eval
 output_dir: outputs/eval
 model: qwen3_27b_q4_k_m_gguf
 
-cases:
-  - id: case_001
-    text_file: examples/sample_mri.txt
-    expected:
-      extracted_features:
-        invasion:
-          type: none
-          confidence: absent
-```
-
-Inline text вместо `text_file`:
-
-```yaml
 cases:
   - id: inline_case_001
     text: |
@@ -246,323 +128,62 @@ cases:
           confidence: absent
 ```
 
-В одном case нужно указывать либо `text`, либо `text_file`, но не оба поля.
+## JSON mode
 
-Для проверки JSON-валидации без модели можно передать `raw_output` в case.
-Если `raw_output` задан, модель не загружается для этого case.
+Для llama_cpp моделей включен backend-level JSON mode:
 
----
-
-## Передача текста напрямую
-
-```bash
-python run_single.py --text "Описание МРТ..."
+```yaml
+output:
+  response_format:
+    type: json_object
+  enforce_json: true
 ```
 
----
+Если установленная версия `llama-cpp-python` не поддерживает `response_format`,
+backend пишет warning и повторяет генерацию без этого аргумента. Дальше остаются
+обычные safety net: prompt instruction, robust JSON extraction, retry и Pydantic
+validation.
 
-# Работа через Jupyter Notebook
+## Suspicion
 
-Откройте:
+`suspicion` отделяет клиническое подозрение от основного вывода:
 
-```text
-notebooks/01_example_runs.ipynb
+```json
+{
+  "suspicion": {
+    "highest_suspected_extent": "none",
+    "percreta_suspicion": "absent",
+    "bladder_serosa_suspicion": "absent",
+    "rationale": []
+  }
+}
 ```
 
-Рекомендуемый workflow:
+Старые payload без `suspicion` валидируются с default-блоком. Подозрение на
+percreta учитывается как safety red flag в scoring, но не меняет
+`extracted_features.invasion.type`.
 
-```python
-from pas_mri_extractor.models import load_llm
+## OOM на RTX 3090
 
-loaded_model = load_llm()
-```
+При CUDA OOM уменьшайте параметры в `configs/models.yaml`:
 
-После этого модель не будет загружаться заново при каждом вызове.
+- `runtime.n_ctx`: `8192` -> `4096`;
+- `generation.max_tokens` и `generation.max_new_tokens`: ниже `2048`;
+- `runtime.n_gpu_layers`: `-1` -> `60`, затем ниже;
+- `runtime.n_batch`: `512` -> `256`.
 
-Пример:
-
-```python
-from pas_mri_extractor.extractor import extract_mri_features
-
-result = extract_mri_features(
-    mri_text,
-    loaded_model=loaded_model,
-)
-```
-
----
-
-# Поддерживаемые модели
-
-Модели задаются в:
-
-```text
-configs/models.yaml
-```
-
-Текущая модель по умолчанию:
-
-```text
-Qwen3.6-35B-A3B GGUF Q4_K_M
-```
-
-Основная модель:
-
-```text
-qwen_3_6_35b_gguf -> Qwen3.6-35B-A3B GGUF Q4_K_M
-```
-
-Локальный путь ожидается здесь:
-
-```text
-models/qwen3.6-35b-a3b-gguf/Qwen3.6-35B-A3B-Q4_K_M.gguf
-```
-
-Установить backend на сервере:
-
-```bash
-pip install llama-cpp-python
-```
-
-Скачать GGUF-модель на сервере:
-
-```bash
-hf download lmstudio-community/Qwen3.6-35B-A3B-GGUF \
-  Qwen3.6-35B-A3B-Q4_K_M.gguf \
-  --local-dir models/qwen3.6-35b-a3b-gguf
-```
-
-Запуск через GGUF backend:
-
-```bash
-PYTHONPATH=src python run_single.py \
-  --model qwen_3_6_35b_gguf \
-  --text-file examples/sample_mri.txt
-```
-
-## Qwen3.6-27B GGUF на сервере RTX 3090
-
-Новая серверная модель задана в `configs/models.yaml` как:
-
-```text
-qwen3_27b_q4_k_m_gguf -> unsloth/Qwen3.6-27B-GGUF, Qwen3.6-27B-Q4_K_M.gguf
-```
-
-Ожидаемый локальный путь на сервере:
-
-```text
-~/pas-mri-extractor/models/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf
-```
-
-Создать каталог:
-
-```bash
-mkdir -p ~/pas-mri-extractor/models/Qwen3.6-27B-GGUF
-```
-
-Скачать рабочий GGUF:
-
-```bash
-cd ~/pas-mri-extractor/models/Qwen3.6-27B-GGUF
-hf download unsloth/Qwen3.6-27B-GGUF Qwen3.6-27B-Q4_K_M.gguf --local-dir .
-```
-
-Проверить файл:
-
-```bash
-ls -lh ~/pas-mri-extractor/models/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf
-test -s ~/pas-mri-extractor/models/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf
-```
-
-MTP GGUF сейчас не используем: `unsloth/Qwen3.6-27B-MTP-GGUF`
-с `UD-Q4_K_XL.gguf` падает при загрузке в llama-cpp-python с missing tensor
-`blk.64.ssm_conv1d.weight`.
-
-Проверить конфиг без загрузки модели:
-
-```bash
-PYTHONPATH=src python run_single.py \
-  --model qwen3_27b_q4_k_m_gguf \
-  --dry-run-model-config
-```
-
-Эта команда только валидирует конфиг и показывает resolved path.
-Реальная загрузка GGUF и inference не выполняются.
-
-Smoke test с загрузкой модели и короткой JSON-генерацией:
-
-```bash
-PYTHONPATH=src python -m pas_mri_extractor.smoke_test_llama_cpp \
-  --model qwen3_27b_q4_k_m_gguf
-```
-
-Batch eval:
-
-```bash
-PYTHONPATH=src python -m pas_mri_extractor.batch_eval \
-  --config configs/eval_qwen.yaml \
-  --model qwen3_27b_q4_k_m_gguf
-```
-
-## Qwen3.6-35B-A3B GGUF на сервере RTX 3090
-
-Дополнительная GGUF-модель задана в `configs/models.yaml` как:
-
-```text
-qwen3_6_35b_a3b_gguf -> unsloth/Qwen3.6-35B-A3B-GGUF, Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
-```
-
-Скачать модель:
-
-```bash
-mkdir -p ~/pas-mri-extractor/models/Qwen3.6-35B-A3B-GGUF
-cd ~/pas-mri-extractor/models/Qwen3.6-35B-A3B-GGUF
-hf download unsloth/Qwen3.6-35B-A3B-GGUF Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --local-dir .
-```
-
-Проверить конфиг без загрузки модели:
-
-```bash
-PYTHONPATH=src python run_single.py --model qwen3_6_35b_a3b_gguf --dry-run-model-config
-```
-
-Эта команда только валидирует конфиг и показывает resolved path.
-Реальная загрузка GGUF и inference не выполняются.
-
-Smoke test:
-
-```bash
-PYTHONPATH=src python -m pas_mri_extractor.smoke_test_llama_cpp --model qwen3_6_35b_a3b_gguf
-```
-
-Batch eval:
-
-```bash
-PYTHONPATH=src python -m pas_mri_extractor.batch_eval --config configs/eval_qwen.yaml --model qwen3_6_35b_a3b_gguf
-```
-
-При OOM на RTX 3090:
-
-- уменьшить `runtime.n_ctx` в `configs/models.yaml` с `8192` до `4096`;
-- уменьшить `generation.max_tokens` / `generation.max_new_tokens` с `2048`;
-- уменьшить `runtime.n_gpu_layers`, например с `-1` до `60`, затем ниже;
-- оставить `runtime.n_batch: 512` или уменьшить до `256`.
-
-Проверить, что модель использует GPU:
+Проверка GPU:
 
 ```bash
 watch -n 1 nvidia-smi
 ```
 
 Во время smoke test или batch eval должен расти VRAM usage процесса Python.
-Для подробных логов llama.cpp можно временно поставить `runtime.verbose: true`
-у модели `qwen3_27b_q4_k_m_gguf`; в stderr должны появляться строки про offload слоёв
-на GPU.
 
-Streamlit:
+## Локальные проверки
 
 ```bash
-PYTHONPATH=src streamlit run app/streamlit_app.py
+PYTHONPATH=src python -m compileall run_single.py src app
+PYTHONPATH=src python run_single.py --model qwen3_27b_q4_k_m_gguf --dry-run-model-config
+PYTHONPATH=src python run_single.py --model qwen3_6_35b_a3b_gguf --dry-run-model-config
 ```
-
-Fallback-модель Qwen2.5-7B сохранена:
-
-```bash
-python run_single.py \
-  --model qwen_2_5_7b \
-  --text-file examples/sample_mri.txt
-```
-
----
-
-# Что возвращает пайплайн
-
-Результат содержит:
-
-- версию JSON-схемы,
-- информацию о случае,
-- извлечённые MRI-признаки,
-- evidence с положительными, неопределёнными и отрицательными находками,
-- риск-группу,
-- оценку кровопотери,
-- вероятность сосудистого вмешательства,
-- рекомендации по уровню готовности.
-
-Пример:
-
-```json
-{
-  "schema_version": "1.0",
-  "case_info": {
-    "gestational_week": 34,
-    "previous_cs_count": 2
-  },
-  "extracted_features": {
-    "invasion": {
-      "type": "increta",
-      "confidence": "probable"
-    },
-    "anatomy": {
-      "bladder_involvement": "possible",
-      "parametrium_involvement": "absent",
-      "posterior_wall_involvement": "absent"
-    },
-    "placenta_location": {
-      "placenta_previa": "present",
-      "anterior_placenta": "present"
-    },
-    "mri_signs": {
-      "retroplacental_vessels": "present",
-      "lacunae": "present",
-      "uterine_wall_thinning": "present",
-      "uterine_hernia_or_bulging": "absent"
-    },
-    "clinical_context": {
-      "preoperative_bleeding": "absent"
-    }
-  },
-  "evidence": {
-    "positive_findings": [],
-    "uncertain_findings": [],
-    "negative_findings": []
-  },
-  "score": {
-    "clinical_score": 9,
-    "risk_group": "moderate",
-    "red_flag": 0,
-    "score_reasons": "increta: +3; вероятное/возможное врастание: +1"
-  },
-  "predicted_risks": {
-    "massive_blood_loss_over_1500_ml_percent": 35,
-    "estimated_blood_loss_ml_range": "1000–1500 мл",
-    "vascular_intervention_percent": 25,
-    "bladder_involvement_percent": 15,
-    "risk_summary_text": "Риск массивной кровопотери >1500 мл: 35%; прогнозируемый объём кровопотери: 1000–1500 мл"
-  },
-  "recommendation": {
-    "readiness_level": "2",
-    "readiness_text": "Уровень 2: умеренный риск, усиленная подготовка."
-  },
-  "computed_rationale": "Уровень готовности выбран на основании признаков: increta."
-}
-```
-
----
-
-# Ограничения текущей версии
-
-- Маленькие модели иногда генерируют нестабильный JSON
-- Качество evidence зависит от размера модели
-- Rule-based extraction реализован как baseline/fallback
-- Пока поддерживается только single-case inference
-
----
-
-# Планируемые улучшения
-
-- Hybrid extraction (LLM + rules)
-- Batch processing
-- Evaluation pipeline
-- Более крупные medical LLM
-- Docker
-- API / web-интерфейс
