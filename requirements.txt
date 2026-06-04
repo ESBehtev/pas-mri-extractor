@@ -10,6 +10,7 @@ pyyaml
 python-dotenv
 
 pandas
+openpyxl
 jupyter
 notebook
 ipykernel

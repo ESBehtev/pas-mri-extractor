@@ -25,16 +25,16 @@ pip install -e .
 
 Модели описаны в `configs/models.yaml`.
 
-Production default:
+Current default:
 
 ```text
-qwen3_27b_q4_k_m_gguf
+qwen3_6_35b_a3b_gguf
 ```
 
 Дополнительная GGUF-модель:
 
 ```text
-qwen3_6_35b_a3b_gguf
+qwen3_27b_q4_k_m_gguf
 ```
 
 Fallback без GGUF:
@@ -126,6 +126,73 @@ cases:
         invasion:
           type: none
           confidence: absent
+```
+
+## Ретроспективный evaluation pipeline
+
+Экспорт третьего листа Excel из корня проекта в CSV и JSONL:
+
+```bash
+PYTHONPATH=src python scripts/export_excel_dataset.py
+```
+
+Если Excel-файл нужно указать явно:
+
+```bash
+PYTHONPATH=src python scripts/export_excel_dataset.py \
+  --xlsx "Копия Итог 2 этап_v2 (00000002).xlsx"
+```
+
+Результат сохраняется в:
+
+```text
+data/evaluation/dataset_sheet3.csv
+data/evaluation/dataset_sheet3.jsonl
+```
+
+Построение ретроспективных gold-полей в новых файлах без изменения исходного
+`dataset_sheet3.csv`:
+
+```bash
+PYTHONPATH=src python scripts/build_gold_dataset.py
+```
+
+Результат сохраняется в:
+
+```text
+data/evaluation/dataset_sheet3_gold.csv
+data/evaluation/dataset_sheet3_gold.jsonl
+```
+
+Проверка пайплайна без LLM на rule baseline:
+
+```bash
+PYTHONPATH=src python scripts/evaluate_predictions.py --use-rules --limit 10
+```
+
+Оценка через LLM на сервере:
+
+```bash
+PYTHONPATH=src python scripts/evaluate_predictions.py \
+  --run-llm \
+  --model qwen3_6_35b_a3b_gguf \
+  --limit 10
+```
+
+Результаты:
+
+```text
+outputs/evaluation/predictions.jsonl
+outputs/evaluation/metrics.json
+```
+
+Если названия колонок МРТ отличаются от ожидаемых, передайте их явно:
+
+```bash
+PYTHONPATH=src python scripts/evaluate_predictions.py \
+  --use-rules \
+  --text-columns "МРТ_Описание" "МРТ_Заключение" \
+  --limit 10
 ```
 
 ## JSON mode

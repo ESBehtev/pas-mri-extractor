@@ -249,6 +249,8 @@ logs/
 *.log
 
 # Medical imaging and clinical data artifacts
+*.xls
+*.xlsx
 *.dcm
 *.dicom
 *.nii

@@ -1,0 +1,23 @@
+benchmark:
+  name: pas20_qwen35b_full_vs_description_only
+  model: qwen3_6_35b_a3b_gguf
+  input_cases: data/pas20.json
+  gold: data/evaluation/gold.jsonl
+  baseline: outputs/baseline_normalized.json
+
+outputs:
+  full_dir: outputs/full
+  description_only_dir: outputs/description_only
+  full_normalized: outputs/full_normalized.json
+  description_only_normalized: outputs/description_only_normalized.json
+  full_metrics: outputs/full_metrics.json
+  description_only_metrics: outputs/description_only_metrics.json
+  baseline_metrics: outputs/baseline_metrics.json
+  mode_comparison: outputs/mode_comparison.json
+  baseline_comparison: outputs/baseline_comparison.json
+  report: reports/benchmark_report.md
+
+notes:
+  - Inference must be run on the server/runtime environment.
+  - Do not run scripts/run_benchmark.py locally.
+  - Description-only mode excludes МРТ_Заключение completely.
