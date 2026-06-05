@@ -155,6 +155,28 @@ python scripts/build_report.py \
   --output reports/benchmark_report.md
 ```
 
+## Presentation metrics and reports
+
+Presentation metrics:
+
+```bash
+python scripts/presentation_metrics.py \
+  --gold data/evaluation/pas20.jsonl \
+  --full outputs/full_normalized.json \
+  --description-only outputs/description_only_normalized.json \
+  --output-json reports/presentation_metrics.json \
+  --output-md reports/presentation_metrics.md
+```
+
+Presentation reports:
+
+```bash
+python scripts/build_presentation_reports.py \
+  --metrics reports/presentation_metrics.json \
+  --error-review reports/error_review.jsonl \
+  --output-dir reports
+```
+
 ## Notes
 
 - `mode=full` joins `МРТ_Описание` and `МРТ_Заключение`.
