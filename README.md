@@ -8,6 +8,47 @@
 `suspicion` хранит отдельный safety-блок для неопределенных формулировок
 вроде "нельзя исключить percreta" и не подменяет `invasion.type`.
 
+## Current Stage Architecture
+
+Текущий публичный Streamlit-запуск сохраняется:
+
+```bash
+PYTHONPATH=src streamlit run app/streamlit_app.py --server.port 8501
+```
+
+Параллельно добавлен минимальный синхронный stage-based слой без LangGraph,
+FastAPI и очередей:
+
+- `ExtractorStage`: тонкая обёртка над текущим extraction pipeline. Она отвечает
+  за структурированное извлечение PAS JSON из текста МРТ и не меняет prompt,
+  schema или поведение существующего extractor.
+- `RiskPredictionStage`: стадия расчёта score, `predicted_risks`,
+  `recommendation` и `computed_rationale` на основе уже извлечённого JSON.
+  Сейчас она использует существующую rule-based функцию
+  `scoring.normalize_mri_result()`, поэтому численные значения и readiness logic
+  остаются прежними.
+
+Программная точка входа:
+
+```python
+from pas_mri_extractor.orchestrator import run_case_pipeline
+
+stage_results = run_case_pipeline(text, model_id="qwen3_6_35b_a3b_gguf")
+```
+
+`PipelineContext` уже хранит `source_text`, optional `conclusion_text`,
+`extracted_result`, `predicted_risks`, `evidence` и `metadata`, чтобы следующими
+шагами можно было добавить более сложный prognosis слой без изменения
+extraction schema.
+
+Planned stages/services:
+
+- `ValidationStage`;
+- ML/calibrated prognosis model;
+- `ClinicalSummaryStage`;
+- `CaseChatService` поверх финального case context;
+- MRI/DICOM segmentation/classification pipeline.
+
 ## Установка
 
 ```bash
