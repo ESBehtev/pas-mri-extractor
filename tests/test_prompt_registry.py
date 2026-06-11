@@ -51,7 +51,11 @@ class PromptRegistryTest(unittest.TestCase):
         prompt_config = load_stage_prompt("risk_prediction")
 
         self.assertEqual(prompt_config["stage"], "risk_prediction")
-        self.assertEqual(prompt_config["status"], "planned_example")
+        self.assertEqual(prompt_config["status"], "experimental")
+        self.assertEqual(
+            prompt_config["registry_metadata"]["runtime"],
+            "terminal_experiment_only",
+        )
         self.assertIn("template", prompt_config)
 
 

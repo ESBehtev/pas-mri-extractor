@@ -64,8 +64,12 @@ DEFAULT_PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "risk_prediction": PromptSpec(
         stage_name="risk_prediction",
-        config_name="prompts/risk_prediction.example.yaml",
+        config_name="prompts/risk_prediction.yaml",
         active=False,
+        metadata={
+            "example_config_name": "prompts/risk_prediction.example.yaml",
+            "runtime": "terminal_experiment_only",
+        },
     ),
     "clinical_summary": PromptSpec(
         stage_name="clinical_summary",
