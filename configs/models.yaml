@@ -4,7 +4,7 @@ models:
 
   qwen3_27b_q4_k_m_gguf:
     display_name: Qwen3.6-27B GGUF Q4_K_M
-    model_path: ~/pas-mri-extractor/models/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf
+    model_path: Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf
     hf_repo: unsloth/Qwen3.6-27B-GGUF
     hf_filename: Qwen3.6-27B-Q4_K_M.gguf
     backend: llama_cpp
@@ -35,7 +35,7 @@ models:
 
   qwen3_6_35b_a3b_gguf:
     display_name: Qwen3.6-35B-A3B GGUF UD-Q4_K_M
-    model_path: ~/pas-mri-extractor/models/Qwen3.6-35B-A3B-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+    model_path: Qwen3.6-35B-A3B-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
     hf_repo: unsloth/Qwen3.6-35B-A3B-GGUF
     hf_filename: Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
     backend: llama_cpp

@@ -1,0 +1,24 @@
+# Future-facing example only.
+# The current pipeline uses the extractor stage and configs/prompt.yaml directly.
+# This file is not loaded by runtime logic yet.
+
+stages:
+  extractor:
+    model_profile: default_extractor
+    prompt_config: configs/prompt.yaml
+    enabled: true
+
+  validation:
+    model_profile: default_validator
+    prompt_config: configs/prompts/validation.yaml
+    enabled: false
+
+  prognosis:
+    model_profile: default_prognosis
+    prompt_config: configs/prompts/prognosis.yaml
+    enabled: false
+
+  clinical_review:
+    model_profile: default_review
+    prompt_config: configs/prompts/clinical_review.yaml
+    enabled: false

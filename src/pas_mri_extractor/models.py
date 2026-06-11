@@ -103,15 +103,26 @@ def get_model_config(model_name: str | None = None) -> tuple[str, dict[str, Any]
 
 
 def resolve_model_path(path_or_id: str) -> Path | None:
-    path = Path(path_or_id).expanduser()
+    if "/" in path_or_id and not path_or_id.endswith(".gguf"):
+        return None
+
+    if path_or_id.startswith("~"):
+        return Path(path_or_id).expanduser().resolve()
+
+    path = Path(path_or_id)
 
     if path.is_absolute():
         return path.resolve()
 
-    if "/" in path_or_id and not path_or_id.startswith("models/"):
-        return None
+    if path_or_id.startswith("models/"):
+        return (PROJECT_ROOT / path).resolve()
 
-    return (PROJECT_ROOT / path).resolve()
+    models_dir = Path(os.getenv("PAS_MODELS_DIR", str(PROJECT_ROOT / "models")))
+    models_dir = models_dir.expanduser()
+    if not models_dir.is_absolute():
+        models_dir = PROJECT_ROOT / models_dir
+
+    return (models_dir / path).resolve()
 
 
 def get_model_id_or_path(model_cfg: dict[str, Any]) -> str:

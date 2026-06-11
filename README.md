@@ -8,6 +8,16 @@
 `suspicion` хранит отдельный safety-блок для неопределенных формулировок
 вроде "нельзя исключить percreta" и не подменяет `invasion.type`.
 
+## Current scope
+
+- Streamlit extractor UI.
+- GGUF model registry in `configs/models.yaml`.
+- Pydantic validation, rule fallback, and deterministic scoring.
+- Benchmark/evaluation scripts and gold-labeling workflow.
+- Docker baseline for the Streamlit extractor.
+- Future planned work: stage orchestrator, FastAPI backend, inference service,
+  and MRI/DICOM segmentation/classification pipeline.
+
 ## Установка
 
 ```bash
@@ -53,22 +63,34 @@ PYTHONPATH=src python run_single.py --model qwen3_6_35b_a3b_gguf --dry-run-model
 
 ## Скачивание GGUF на сервере
 
+GGUF-модели кладутся в директорию `PAS_MODELS_DIR`. По умолчанию это
+`models/` в корне проекта. В Docker используется `/app/models`; на сервере
+можно явно задать, например:
+
+```bash
+export PAS_MODELS_DIR=/home/mirea/pas-mri-extractor/models
+mkdir -p "$PAS_MODELS_DIR"
+```
+
+Путь `~/pas-mri-extractor/models` больше не рекомендуется, потому что в Docker
+он разворачивается в `/root/pas-mri-extractor/models`.
+
 27B Q4_K_M:
 
 ```bash
-mkdir -p ~/pas-mri-extractor/models/Qwen3.6-27B-GGUF
-cd ~/pas-mri-extractor/models/Qwen3.6-27B-GGUF
+mkdir -p "$PAS_MODELS_DIR/Qwen3.6-27B-GGUF"
+cd "$PAS_MODELS_DIR/Qwen3.6-27B-GGUF"
 hf download unsloth/Qwen3.6-27B-GGUF Qwen3.6-27B-Q4_K_M.gguf --local-dir .
-test -s ~/pas-mri-extractor/models/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf
+test -s "$PAS_MODELS_DIR/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf"
 ```
 
 35B-A3B UD-Q4_K_M:
 
 ```bash
-mkdir -p ~/pas-mri-extractor/models/Qwen3.6-35B-A3B-GGUF
-cd ~/pas-mri-extractor/models/Qwen3.6-35B-A3B-GGUF
+mkdir -p "$PAS_MODELS_DIR/Qwen3.6-35B-A3B-GGUF"
+cd "$PAS_MODELS_DIR/Qwen3.6-35B-A3B-GGUF"
 hf download unsloth/Qwen3.6-35B-A3B-GGUF Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --local-dir .
-test -s ~/pas-mri-extractor/models/Qwen3.6-35B-A3B-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+test -s "$PAS_MODELS_DIR/Qwen3.6-35B-A3B-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
 ```
 
 ## Запуск на сервере
