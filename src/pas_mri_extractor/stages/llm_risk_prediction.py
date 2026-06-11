@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from pas_mri_extractor.prompt_registry import load_stage_prompt
 
@@ -11,28 +11,53 @@ from .base import PipelineContext, StageResult, StageStatus, to_serializable
 
 
 ConfidenceLevel = Literal["low", "medium", "high"]
+EstimatedBloodLossRange = Literal[
+    "<1000 мл",
+    "1000–1500 мл",
+    "1500–2500 мл",
+    ">2500 мл",
+]
+ReadinessLevel = Literal["1", "2", "3", "4"]
 LLMRiskPredictionRunner = Callable[[str, str | None], str | dict[str, Any]]
 
 
 class LLMRiskAssessment(BaseModel):
-    blood_loss_risk_percent: int = Field(ge=0, le=100)
-    blood_loss_range: str
+    model_config = ConfigDict(extra="forbid")
+
+    massive_blood_loss_risk_percent: int = Field(ge=0, le=100)
+    estimated_blood_loss_ml: int = Field(ge=0)
+    estimated_blood_loss_range: EstimatedBloodLossRange
     vascular_intervention_risk_percent: int = Field(ge=0, le=100)
     bladder_involvement_risk_percent: int = Field(ge=0, le=100)
+    hysterectomy_risk_percent: int = Field(ge=0, le=100)
+    transfusion_risk_percent: int = Field(ge=0, le=100)
 
 
 class LLMReadiness(BaseModel):
-    level: str
+    model_config = ConfigDict(extra="forbid")
+
+    level: ReadinessLevel
     rationale: str
 
 
 class LLMClinicalSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+
+
+class LLMOperativeRiskSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     text: str
 
 
 class LLMRiskPredictionOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     risk_assessment: LLMRiskAssessment
     readiness: LLMReadiness
+    operative_risk_summary: LLMOperativeRiskSummary
     clinical_summary: LLMClinicalSummary
     confidence: ConfidenceLevel
 

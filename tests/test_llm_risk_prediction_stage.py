@@ -53,14 +53,20 @@ EXTRACTED_RESULT = {
 
 LLM_OUTPUT = {
     "risk_assessment": {
-        "blood_loss_risk_percent": 45,
-        "blood_loss_range": "1000-1500 ml",
+        "massive_blood_loss_risk_percent": 45,
+        "estimated_blood_loss_ml": 1200,
+        "estimated_blood_loss_range": "1000–1500 мл",
         "vascular_intervention_risk_percent": 30,
         "bladder_involvement_risk_percent": 20,
+        "hysterectomy_risk_percent": 15,
+        "transfusion_risk_percent": 35,
     },
     "readiness": {
         "level": "2",
         "rationale": "probable increta with possible bladder involvement",
+    },
+    "operative_risk_summary": {
+        "text": "Moderate surgical risk with blood product preparation.",
     },
     "clinical_summary": {
         "text": "Research-only PAS risk summary.",
@@ -73,13 +79,50 @@ class LLMRiskPredictionStageTest(unittest.TestCase):
     def test_llm_risk_prediction_schema_accepts_expected_output(self) -> None:
         result = LLMRiskPredictionOutput.model_validate(LLM_OUTPUT)
 
-        self.assertEqual(result.risk_assessment.blood_loss_risk_percent, 45)
+        self.assertEqual(
+            result.risk_assessment.massive_blood_loss_risk_percent,
+            45,
+        )
+        self.assertEqual(result.risk_assessment.estimated_blood_loss_ml, 1200)
+        self.assertEqual(
+            result.risk_assessment.estimated_blood_loss_range,
+            "1000–1500 мл",
+        )
+        self.assertEqual(result.readiness.level, "2")
+        self.assertEqual(
+            result.operative_risk_summary.text,
+            "Moderate surgical risk with blood product preparation.",
+        )
         self.assertEqual(result.confidence, "medium")
 
     def test_llm_risk_prediction_schema_rejects_unknown_confidence(self) -> None:
         payload = {
             **LLM_OUTPUT,
             "confidence": "uncertain",
+        }
+
+        with self.assertRaises(ValidationError):
+            LLMRiskPredictionOutput.model_validate(payload)
+
+    def test_llm_risk_prediction_schema_rejects_unknown_readiness(self) -> None:
+        payload = {
+            **LLM_OUTPUT,
+            "readiness": {
+                **LLM_OUTPUT["readiness"],
+                "level": "5",
+            },
+        }
+
+        with self.assertRaises(ValidationError):
+            LLMRiskPredictionOutput.model_validate(payload)
+
+    def test_llm_risk_prediction_schema_rejects_unknown_blood_loss_range(self) -> None:
+        payload = {
+            **LLM_OUTPUT,
+            "risk_assessment": {
+                **LLM_OUTPUT["risk_assessment"],
+                "estimated_blood_loss_range": "1000-1500 ml",
+            },
         }
 
         with self.assertRaises(ValidationError):
@@ -120,6 +163,7 @@ class LLMRiskPredictionStageTest(unittest.TestCase):
         self.assertIn("MRI source text", captured["prompt"])
         self.assertIn("MRI conclusion text", captured["prompt"])
         self.assertIn("lacunae", captured["prompt"])
+        self.assertIn("operative_risk_summary", captured["prompt"])
         self.assertIn("debug_artifacts", result.metadata)
 
     def test_risk_prediction_experiment_runs_without_main_orchestrator_change(self) -> None:
