@@ -49,6 +49,38 @@ Planned stages/services:
 - `CaseChatService` поверх финального case context;
 - MRI/DICOM segmentation/classification pipeline.
 
+## Prompt Registry
+
+Активный extractor prompt по-прежнему хранится в `configs/prompt.yaml`.
+Это сохраняет совместимость существующего `build_prompt()` и не меняет
+поведение extraction.
+
+Для stage-based архитектуры добавлен prompt registry:
+
+- `extractor` резолвится в текущий активный `configs/prompt.yaml`;
+- `configs/prompts/extractor.yaml` является documented alias и не используется
+  runtime extraction;
+- `configs/prompts/risk_prediction.example.yaml` является planned risk
+  prediction prompt и сейчас не используется текущим rule-based
+  `RiskPredictionStage`;
+- `configs/prompts/clinical_summary.example.yaml` является planned clinical
+  summary prompt;
+- `configs/prompts/case_chat.example.yaml` является planned case chat prompt.
+
+Рекомендуемая структура `configs/`:
+
+- `configs/prompts/`: stage prompt registry entries и future prompt configs;
+- `configs/prompt.yaml`: active extractor prompt, сохранён для backward
+  compatibility;
+- `configs/models.yaml`: model registry;
+- `configs/rules.yaml`: rule baseline config;
+- `configs/risk_score.yaml`: deterministic score/risk config;
+- `configs/benchmark_pas20.yaml`: PAS20 benchmark config;
+- `configs/eval_*.yaml`: YAML batch eval configs.
+
+В будущем разные стадии смогут использовать разные prompt configs и разные
+модели без изменения clinical schema.
+
 ## Установка
 
 ```bash

@@ -1,0 +1,9 @@
+stage: extractor
+role: active_extractor_prompt_alias
+status: alias
+active_config: prompt.yaml
+runtime_active: false
+description: >
+  Active extractor prompt is kept in configs/prompt.yaml for backward
+  compatibility. This file documents the future configs/prompts layout but is
+  not used by runtime extraction.

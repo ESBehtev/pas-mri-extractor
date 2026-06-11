@@ -1,0 +1,18 @@
+stage: risk_prediction
+role: planned_risk_prediction_prompt
+status: planned_example
+runtime_active: false
+description: >
+  Example prompt placeholder for a future ML/LLM-assisted prognosis stage.
+  Current RiskPredictionStage is rule-based and does not use this prompt.
+template: |
+  You are a PAS risk prognosis assistant.
+
+  Input case context may include:
+  - source_text
+  - conclusion_text
+  - extracted_result
+  - evidence
+  - metadata
+
+  Return structured risk reasoning only when this planned stage is implemented.
