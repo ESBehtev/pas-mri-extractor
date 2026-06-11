@@ -102,7 +102,9 @@ class StageContractTest(unittest.TestCase):
             self.assertEqual(kwargs["text"], "MRI report text")
             self.assertEqual(kwargs["model_name"], "mock-model")
             return {
+                "prompt": "mock prompt",
                 "raw_output": json.dumps(CANONICAL_PAYLOAD),
+                "parsed": CANONICAL_PAYLOAD,
                 "validated": validated,
                 "result": full_result,
             }
@@ -124,6 +126,26 @@ class StageContractTest(unittest.TestCase):
         self.assertEqual([result.status for result in results], [StageStatus.SUCCESS] * 2)
         self.assertIsNotNone(context.extracted_result)
         self.assertIsNotNone(context.predicted_risks)
+
+        extractor_result = results[0]
+        self.assertEqual(
+            set(extractor_result.output),
+            {"extracted_result", "evidence", "schema_version"},
+        )
+        self.assertEqual(extractor_result.output["schema_version"], "1.0")
+        self.assertEqual(
+            extractor_result.output["evidence"],
+            CANONICAL_PAYLOAD["evidence"],
+        )
+        self.assertNotIn("prompt", extractor_result.output)
+        self.assertNotIn("raw_output", extractor_result.output)
+        self.assertNotIn("parsed", extractor_result.output)
+        self.assertEqual(
+            extractor_result.metadata["debug_artifacts"]["prompt"],
+            "mock prompt",
+        )
+        self.assertIn("raw_output", extractor_result.metadata["debug_artifacts"])
+        self.assertIn("parsed", extractor_result.metadata["debug_artifacts"])
 
     def test_extractor_stage_returns_failed_result_on_runner_error(self) -> None:
         def failing_runner(**kwargs):

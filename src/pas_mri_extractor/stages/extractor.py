@@ -24,6 +24,21 @@ def _get_evidence(extracted_result: Any) -> dict[str, Any] | None:
     return None
 
 
+def _get_schema_version(extracted_result: Any, result: Any) -> str | None:
+    if hasattr(extracted_result, "schema_version"):
+        return str(extracted_result.schema_version)
+
+    if isinstance(extracted_result, dict):
+        schema_version = extracted_result.get("schema_version")
+        return str(schema_version) if schema_version is not None else None
+
+    if isinstance(result, dict):
+        schema_version = result.get("schema_version")
+        return str(schema_version) if schema_version is not None else None
+
+    return None
+
+
 class ExtractorStage:
     name = "ExtractorStage"
 
@@ -58,15 +73,22 @@ class ExtractorStage:
         context.metadata["model_id"] = self.model_id
 
         result = artifacts.get("result")
-        if isinstance(result, dict):
-            context.metadata["schema_version"] = result.get("schema_version")
+        schema_version = _get_schema_version(extracted_result, result)
+        context.metadata["schema_version"] = schema_version
+
+        output = {
+            "extracted_result": to_serializable(extracted_result),
+            "evidence": context.evidence,
+            "schema_version": schema_version,
+        }
 
         return StageResult(
             stage_name=self.name,
             status=StageStatus.SUCCESS,
-            output=artifacts,
+            output=output,
             metadata={
                 "model_id": self.model_id,
-                "schema_version": context.metadata.get("schema_version"),
+                "schema_version": schema_version,
+                "debug_artifacts": artifacts,
             },
         )
