@@ -51,12 +51,17 @@ def run_risk_prediction_experiment(
     extracted_result: object,
     model_id: str | None,
     runner: LLMRiskPredictionRunner | None = None,
+    loaded_model: object | None = None,
 ) -> StageResult:
     context = PipelineContext(
         source_text=text,
         extracted_result=extracted_result,
         metadata={"model_id": model_id},
     )
-    stage = LLMRiskPredictionStage(model_id=model_id, runner=runner)
+    stage = LLMRiskPredictionStage(
+        model_id=model_id,
+        runner=runner,
+        loaded_model=loaded_model,
+    )
 
     return stage.run(context)

@@ -97,9 +97,10 @@ def default_llm_risk_prediction_runner(
     prompt: str,
     model_id: str | None,
 ) -> str:
-    from pas_mri_extractor.models import generate_text, load_llm
+    from pas_mri_extractor.models import generate_text
+    from pas_mri_extractor.pipeline import get_cached_model
 
-    loaded_model = load_llm(model_id)
+    loaded_model = get_cached_model(model_id)
     return generate_text(loaded_model, prompt)
 
 
@@ -110,9 +111,19 @@ class LLMRiskPredictionStage:
         self,
         model_id: str | None = None,
         runner: LLMRiskPredictionRunner | None = None,
+        loaded_model: Any | None = None,
     ) -> None:
         self.model_id = model_id
-        self.runner = runner or default_llm_risk_prediction_runner
+        self.loaded_model = loaded_model
+        self.runner = runner or self._default_runner
+
+    def _default_runner(self, prompt: str, model_id: str | None) -> str:
+        if self.loaded_model is not None:
+            from pas_mri_extractor.models import generate_text
+
+            return generate_text(self.loaded_model, prompt)
+
+        return default_llm_risk_prediction_runner(prompt, model_id)
 
     def run(self, context: PipelineContext) -> StageResult:
         if context.extracted_result is None:

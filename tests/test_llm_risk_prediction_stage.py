@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from pydantic import ValidationError
 
@@ -133,6 +134,23 @@ class LLMRiskPredictionStageTest(unittest.TestCase):
         )
 
         self.assertEqual(result.stage_name, "LLMRiskPredictionStage")
+        self.assertEqual(result.status, StageStatus.SUCCESS)
+
+    def test_passed_runner_does_not_load_or_lookup_model(self) -> None:
+        def mock_runner(prompt, model_id):
+            return LLM_OUTPUT
+
+        with patch(
+            "pas_mri_extractor.pipeline.get_cached_model",
+            side_effect=AssertionError("model lookup should not be called"),
+        ):
+            result = run_risk_prediction_experiment(
+                text="MRI source text",
+                extracted_result=EXTRACTED_RESULT,
+                model_id="mock-model",
+                runner=mock_runner,
+            )
+
         self.assertEqual(result.status, StageStatus.SUCCESS)
 
 

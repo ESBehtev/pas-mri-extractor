@@ -60,9 +60,11 @@ Planned stages/services:
 - `extractor` резолвится в текущий активный `configs/prompt.yaml`;
 - `configs/prompts/extractor.yaml` является documented alias и не используется
   runtime extraction;
-- `configs/prompts/risk_prediction.example.yaml` является planned risk
-  prediction prompt и сейчас не используется текущим rule-based
-  `RiskPredictionStage`;
+- `configs/prompts/risk_prediction.yaml` является experimental LLM risk
+  prediction prompt для терминальных экспериментов и не подключён к основному
+  `run_case_pipeline()`;
+- `configs/prompts/risk_prediction.example.yaml` оставлен как planned/example
+  prompt и не используется текущим rule-based `RiskPredictionStage`;
 - `configs/prompts/clinical_summary.example.yaml` является planned clinical
   summary prompt;
 - `configs/prompts/case_chat.example.yaml` является planned case chat prompt.
@@ -80,6 +82,25 @@ Planned stages/services:
 
 В будущем разные стадии смогут использовать разные prompt configs и разные
 модели без изменения clinical schema.
+
+Terminal-only LLM risk prediction experiment:
+
+```python
+from pas_mri_extractor.orchestrator import run_risk_prediction_experiment
+from pas_mri_extractor.pipeline import get_cached_model
+
+loaded_model = get_cached_model("qwen3_6_35b_a3b_gguf")
+stage_result = run_risk_prediction_experiment(
+    text=mri_text,
+    extracted_result=extracted_json,
+    model_id="qwen3_6_35b_a3b_gguf",
+    loaded_model=loaded_model,
+)
+```
+
+Если `runner` или `loaded_model` передан явно, экспериментальная стадия не
+загружает GGUF повторно. Без них fallback использует process-level
+`get_cached_model()`.
 
 ## Установка
 
