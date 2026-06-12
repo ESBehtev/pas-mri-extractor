@@ -4,6 +4,7 @@ from pas_mri_extractor.stages import StageResult, StageStatus
 from scripts.evaluate_llm_risk import (
     calculate_summary,
     extract_case_fields,
+    join_gold_with_text_records,
     process_record,
 )
 
@@ -150,6 +151,61 @@ class EvaluateLLMRiskTest(unittest.TestCase):
         self.assertEqual(result["case_id"], "case-1")
         self.assertEqual(result["llm_risk"], LLM_RISK)
         self.assertNotIn("debug_artifacts", result["llm_risk"])
+
+    def test_join_gold_with_text_records_builds_mri_text_from_text_input(self) -> None:
+        gold_records = [
+            {
+                "case_id": "case-1",
+                "gold_blood_loss_ml": 1500,
+                "gold_massive_blood_loss": "yes",
+                "gold_bladder_involvement": "no",
+                "gold_vascular_intervention": "yes",
+                "gold_pas_type": "increta",
+                "gold_readiness_level": "3",
+            }
+        ]
+        text_records = [
+            {
+                "case_id": "case-1",
+                "МРТ_Описание": "Описание МРТ case-1",
+                "МРТ_Заключение": "Заключение МРТ case-1",
+            }
+        ]
+
+        joined = join_gold_with_text_records(gold_records, text_records)
+        case_id, text, actual, warnings = extract_case_fields(joined[0], 0)
+
+        self.assertEqual(case_id, "case-1")
+        self.assertEqual(
+            text,
+            "Описание:\nОписание МРТ case-1\n\n"
+            "Заключение:\nЗаключение МРТ case-1",
+        )
+        self.assertEqual(actual["blood_loss_ml"], 1500)
+        self.assertIs(actual["massive_blood_loss"], True)
+        self.assertIs(actual["bladder_involvement"], False)
+        self.assertIs(actual["vascular_intervention"], True)
+        self.assertEqual(actual["final_pas"], "increta")
+        self.assertEqual(actual["readiness_level"], "3")
+        self.assertFalse(any("text not found" in warning for warning in warnings))
+
+    def test_process_record_fails_when_joined_text_is_missing(self) -> None:
+        gold_records = [{"case_id": "case-2", "gold_blood_loss_ml": 1200}]
+        joined = join_gold_with_text_records(gold_records, [], join_key="case_id")
+
+        result = process_record(
+            record=joined[0],
+            index=0,
+            model_id="mock-model",
+            text_field="auto",
+            dry_run=True,
+        )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("Missing MRI text", result["errors"])
+        self.assertTrue(
+            any("text not found for case_id=case-2" in warning for warning in result["warnings"])
+        )
 
 
 if __name__ == "__main__":

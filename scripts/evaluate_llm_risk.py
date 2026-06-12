@@ -70,6 +70,24 @@ TEXT_FIELDS = [
     "Заключение",
 ]
 
+DESCRIPTION_FIELDS = [
+    "МРТ_Описание",
+    "МРТ Описание",
+    "Описание МРТ",
+    "Описание",
+    "MRI_description",
+    "mri_description",
+]
+
+CONCLUSION_FIELDS = [
+    "МРТ_Заключение",
+    "МРТ Заключение",
+    "Заключение МРТ",
+    "Заключение",
+    "MRI_conclusion",
+    "mri_conclusion",
+]
+
 ACTUAL_FIELDS = {
     "blood_loss_ml": [
         "blood_loss_ml",
@@ -78,6 +96,11 @@ ACTUAL_FIELDS = {
         "Кровопотеря",
         "КровопотеряРоды",
         "КровопотеряОперация",
+    ],
+    "massive_blood_loss": [
+        "massive_blood_loss",
+        "gold_massive_blood_loss",
+        "actual_massive_blood_loss",
     ],
     "transfusion": [
         "transfusion",
@@ -129,6 +152,7 @@ BINARY_TASKS = {
     "vascular_intervention": "vascular_intervention_risk_percent",
     "bladder_involvement": "bladder_involvement_risk_percent",
 }
+BINARY_ACTUAL_FIELDS = set(BINARY_TASKS) | {"massive_blood_loss"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -146,6 +170,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--text-field", default="auto")
+    parser.add_argument(
+        "--text-input",
+        default=None,
+        help="Optional JSONL path with MRI text rows joined to --input.",
+    )
+    parser.add_argument(
+        "--join-key",
+        default="case_id",
+        help="Field used to join --input gold rows with --text-input rows.",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -258,6 +292,72 @@ def extract_text(
     return str(clean_value(value))
 
 
+def build_joined_mri_text(text_record: dict[str, Any]) -> str | None:
+    description, _ = first_present([text_record], DESCRIPTION_FIELDS)
+    conclusion, _ = first_present([text_record], CONCLUSION_FIELDS)
+    description = clean_value(description)
+    conclusion = clean_value(conclusion)
+
+    if description is None and conclusion is None:
+        return None
+
+    return (
+        "Описание:\n"
+        f"{description or ''}\n\n"
+        "Заключение:\n"
+        f"{conclusion or ''}"
+    )
+
+
+def record_join_key(record: dict[str, Any], join_key: str) -> str | None:
+    value = clean_value(record.get(join_key))
+    return str(value) if value is not None else None
+
+
+def index_text_records(
+    text_records: list[dict[str, Any]],
+    join_key: str,
+) -> dict[str, dict[str, Any]]:
+    index: dict[str, dict[str, Any]] = {}
+    for record in text_records:
+        key = record_join_key(record, join_key)
+        if key is not None:
+            index[key] = record
+    return index
+
+
+def join_gold_with_text_records(
+    gold_records: list[dict[str, Any]],
+    text_records: list[dict[str, Any]],
+    join_key: str = "case_id",
+) -> list[dict[str, Any]]:
+    text_index = index_text_records(text_records, join_key)
+    joined: list[dict[str, Any]] = []
+
+    for record in gold_records:
+        output = dict(record)
+        key = record_join_key(record, join_key)
+        text_record = text_index.get(key) if key is not None else None
+
+        if text_record is None:
+            output["_joined_mri_text"] = None
+            output["_text_join_warning"] = (
+                f"text not found for {join_key}={key}"
+                if key is not None
+                else f"join key not found in gold row: {join_key}"
+            )
+        else:
+            output["_joined_mri_text"] = build_joined_mri_text(text_record)
+            if output["_joined_mri_text"] is None:
+                output["_text_join_warning"] = (
+                    f"text row has no MRI description/conclusion for {join_key}={key}"
+                )
+
+        joined.append(output)
+
+    return joined
+
+
 def extract_case_fields(
     record: dict[str, Any],
     index: int,
@@ -271,14 +371,21 @@ def extract_case_fields(
     if case_id_field is None:
         warnings.append("case_id not found; generated from row index")
 
-    text = extract_text(record, text_field, warnings)
+    if "_text_join_warning" in record:
+        warnings.append(str(record["_text_join_warning"]))
+
+    if "_joined_mri_text" in record:
+        text = clean_value(record.get("_joined_mri_text"))
+        text = str(text) if text is not None else None
+    else:
+        text = extract_text(record, text_field, warnings)
 
     actual: dict[str, Any] = {}
     for output_field, field_names in ACTUAL_FIELDS.items():
         value, field_name = first_present(sources, field_names)
         if output_field == "blood_loss_ml":
             actual[output_field] = coerce_int(value)
-        elif output_field in BINARY_TASKS:
+        elif output_field in BINARY_ACTUAL_FIELDS:
             actual[output_field] = coerce_bool(value)
         else:
             actual[output_field] = clean_value(value)
@@ -524,6 +631,14 @@ def main() -> None:
     summary_path = resolve_path(args.summary_output)
 
     records = load_jsonl(input_path)
+    if args.text_input:
+        text_records = load_jsonl(resolve_path(args.text_input))
+        records = join_gold_with_text_records(
+            gold_records=records,
+            text_records=text_records,
+            join_key=args.join_key,
+        )
+
     selected = records[args.offset :]
     if args.limit is not None:
         selected = selected[: args.limit]
