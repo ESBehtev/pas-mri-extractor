@@ -1,12 +1,12 @@
 import unittest
-from unittest.mock import patch
 
 from pas_mri_extractor.stages import StageResult, StageStatus
 from scripts.evaluate_llm_risk import (
     calculate_summary,
     extract_case_fields,
+    format_case_output,
+    format_summary_output,
     join_gold_with_text_records,
-    parse_args,
     process_record,
 )
 
@@ -77,11 +77,28 @@ class EvaluateLLMRiskTest(unittest.TestCase):
                     "bladder_involvement": False,
                 },
                 "llm_risk": LLM_RISK,
+                "metrics": {
+                    "blood_loss_error_ml": -100,
+                    "blood_loss_abs_error_ml": 100,
+                    "blood_loss_abs_percentage_error": 100 / 1500 * 100,
+                    "readiness_match": True,
+                    "transfusion_actual": True,
+                    "transfusion_predicted": True,
+                    "hysterectomy_actual": True,
+                    "hysterectomy_predicted": True,
+                    "vascular_actual": True,
+                    "vascular_predicted": True,
+                    "bladder_actual": False,
+                    "bladder_predicted": False,
+                },
             },
             {
                 "status": "failed",
+                "case_id": "failed-1",
                 "actual": {},
                 "llm_risk": None,
+                "errors": ["mock failure"],
+                "warnings": ["mock warning"],
             },
         ]
 
@@ -91,7 +108,10 @@ class EvaluateLLMRiskTest(unittest.TestCase):
         self.assertEqual(summary["n_success"], 1)
         self.assertEqual(summary["n_failed"], 1)
         self.assertEqual(summary["blood_loss_mae_ml"], 100)
+        self.assertAlmostEqual(summary["blood_loss_mape_percent"], 100 / 1500 * 100)
+        self.assertEqual(summary["blood_loss_mape_n"], 1)
         self.assertEqual(summary["readiness_exact_match"], 1.0)
+        self.assertEqual(summary["failed_cases"][0]["case_id"], "failed-1")
         self.assertEqual(summary["binary_metrics"]["transfusion"]["tp"], 1)
         self.assertEqual(summary["binary_metrics"]["hysterectomy"]["tp"], 1)
         self.assertEqual(summary["binary_metrics"]["vascular_intervention"]["tp"], 1)
@@ -127,16 +147,13 @@ class EvaluateLLMRiskTest(unittest.TestCase):
             ]
 
         def mock_run_risk_prediction(**kwargs):
-            self.assertEqual(kwargs["risk_mode"], "reason_then_json")
             return StageResult(
                 stage_name="LLMRiskPredictionStage",
                 status=StageStatus.SUCCESS,
                 output=LLM_RISK,
                 metadata={
-                    "risk_mode": "reason_then_json",
                     "debug_artifacts": {
                         "prompt": "should be stripped",
-                        "reasoning_text": "reasoning should be kept only with debug",
                     }
                 },
             )
@@ -148,8 +165,6 @@ class EvaluateLLMRiskTest(unittest.TestCase):
             text_field="auto",
             dry_run=False,
             shared_model=object(),
-            risk_mode="reason_then_json",
-            include_debug=True,
             run_case_pipeline_fn=mock_run_case_pipeline,
             run_risk_prediction_fn=mock_run_risk_prediction,
         )
@@ -157,21 +172,95 @@ class EvaluateLLMRiskTest(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["case_id"], "case-1")
         self.assertEqual(result["llm_risk"], LLM_RISK)
-        self.assertEqual(result["metadata"]["risk_mode"], "reason_then_json")
-        self.assertEqual(
-            result["metadata"]["reasoning_text"],
-            "reasoning should be kept only with debug",
+        self.assertEqual(result["metrics"]["blood_loss_error_ml"], -100)
+        self.assertEqual(result["metrics"]["blood_loss_abs_error_ml"], 100)
+        self.assertAlmostEqual(
+            result["metrics"]["blood_loss_abs_percentage_error"],
+            100 / 1500 * 100,
         )
+        self.assertIs(result["metrics"]["vascular_predicted"], True)
+        self.assertIs(result["metrics"]["bladder_predicted"], False)
         self.assertNotIn("debug_artifacts", result["llm_risk"])
 
-    def test_parse_args_accepts_risk_mode(self) -> None:
-        with patch(
-            "sys.argv",
-            ["evaluate_llm_risk.py", "--risk-mode", "reason_then_json"],
-        ):
-            args = parse_args()
+    def test_format_case_output_for_success_and_failed_cases(self) -> None:
+        success_record = {
+            "case_id": "case_000001",
+            "status": "success",
+            "actual": {
+                "blood_loss_ml": 1000,
+                "readiness_level": "1",
+            },
+            "llm_risk": {
+                "risk_assessment": {
+                    "estimated_blood_loss_ml": 1200,
+                },
+                "readiness": {
+                    "level": "2",
+                },
+            },
+            "metrics": {
+                "blood_loss_error_ml": 200,
+                "blood_loss_abs_error_ml": 200,
+                "blood_loss_abs_percentage_error": 20.0,
+                "readiness_match": False,
+                "vascular_actual": False,
+                "vascular_predicted": False,
+                "vascular_risk_percent": 30,
+                "bladder_actual": False,
+                "bladder_predicted": False,
+                "bladder_risk_percent": 30,
+                "hysterectomy_actual": None,
+                "hysterectomy_predicted": False,
+                "hysterectomy_risk_percent": 25,
+                "transfusion_actual": None,
+                "transfusion_predicted": False,
+                "transfusion_risk_percent": 40,
+            },
+        }
+        failed_record = {
+            "case_id": "case_000002",
+            "status": "failed",
+            "errors": ["mock error"],
+            "warnings": ["mock warning"],
+        }
 
-        self.assertEqual(args.risk_mode, "reason_then_json")
+        success_output = format_case_output(success_record)
+        failed_output = format_case_output(failed_record)
+
+        self.assertIn("case_id=case_000001 | status=success", success_output)
+        self.assertIn("error=+200", success_output)
+        self.assertIn("ape=20.0%", success_output)
+        self.assertIn("readiness: actual=1 | pred=2 | match=False", success_output)
+        self.assertIn("case_id=case_000002 | status=failed", failed_output)
+        self.assertIn("- mock error", failed_output)
+
+    def test_format_summary_output_prints_metrics(self) -> None:
+        summary = {
+            "n_total": 1,
+            "n_success": 1,
+            "n_failed": 0,
+            "blood_loss_mae_ml": 100,
+            "blood_loss_mape_percent": 10,
+            "readiness_exact_match": 1.0,
+            "binary_metrics": {
+                "vascular_intervention": {
+                    "accuracy": 1.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "f1": 1.0,
+                },
+                "bladder_involvement": {},
+                "hysterectomy": {},
+                "transfusion": {},
+            },
+            "failed_cases": [],
+        }
+
+        output = format_summary_output(summary)
+
+        self.assertIn("=== SUMMARY ===", output)
+        self.assertIn("blood_loss_mape_percent: 10", output)
+        self.assertIn("vascular_intervention: accuracy=1.0", output)
 
     def test_join_gold_with_text_records_builds_mri_text_from_text_input(self) -> None:
         gold_records = [

@@ -52,7 +52,6 @@ def run_risk_prediction_experiment(
     model_id: str | None,
     runner: LLMRiskPredictionRunner | None = None,
     loaded_model: object | None = None,
-    risk_mode: str = "direct_json",
 ) -> StageResult:
     context = PipelineContext(
         source_text=text,
@@ -63,7 +62,6 @@ def run_risk_prediction_experiment(
         model_id=model_id,
         runner=runner,
         loaded_model=loaded_model,
-        mode=risk_mode,
     )
 
     return stage.run(context)

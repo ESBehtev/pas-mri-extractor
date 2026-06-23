@@ -2,6 +2,7 @@ from .base import PipelineContext, StageResult, StageStatus
 from .extractor import ExtractorStage
 from .llm_risk_prediction import (
     LLMClinicalSummary,
+    LLMOperativeRiskSummary,
     LLMReadiness,
     LLMRiskAssessment,
     LLMRiskPredictionOutput,
@@ -13,6 +14,7 @@ from .risk_prediction import RiskPredictionStage
 __all__ = [
     "ExtractorStage",
     "LLMClinicalSummary",
+    "LLMOperativeRiskSummary",
     "LLMReadiness",
     "LLMRiskAssessment",
     "LLMRiskPredictionOutput",

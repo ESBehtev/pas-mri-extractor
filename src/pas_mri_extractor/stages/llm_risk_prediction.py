@@ -18,7 +18,6 @@ EstimatedBloodLossRange = Literal[
     ">2500 мл",
 ]
 ReadinessLevel = Literal["1", "2", "3", "4"]
-RiskPredictionMode = Literal["direct_json", "reason_then_json"]
 LLMRiskPredictionRunner = Callable[[str, str | None], str | dict[str, Any]]
 
 
@@ -95,7 +94,6 @@ def build_case_context_json(context: PipelineContext) -> str:
 def build_prompt_from_config(
     context: PipelineContext,
     prompt_config_name: str,
-    reasoning_text: str | None = None,
 ) -> str:
     prompt_config = load_stage_prompt(prompt_config_name)
     template = prompt_config.get("template")
@@ -106,16 +104,7 @@ def build_prompt_from_config(
         "case_context_placeholder",
         "__CASE_CONTEXT_JSON__",
     )
-    prompt = str(template).replace(str(placeholder), build_case_context_json(context))
-
-    if reasoning_text is not None:
-        reasoning_placeholder = prompt_config.get(
-            "reasoning_placeholder",
-            "__REASONING_TEXT__",
-        )
-        prompt = prompt.replace(str(reasoning_placeholder), reasoning_text)
-
-    return prompt
+    return str(template).replace(str(placeholder), build_case_context_json(context))
 
 
 def build_risk_prediction_prompt(context: PipelineContext) -> str:
@@ -157,11 +146,9 @@ class LLMRiskPredictionStage:
         model_id: str | None = None,
         runner: LLMRiskPredictionRunner | None = None,
         loaded_model: Any | None = None,
-        mode: RiskPredictionMode = "direct_json",
     ) -> None:
         self.model_id = model_id
         self.loaded_model = loaded_model
-        self.mode = mode
         self.runner = runner or self._default_runner
 
     def _default_runner(self, prompt: str, model_id: str | None) -> str:
@@ -182,44 +169,15 @@ class LLMRiskPredictionStage:
             )
 
         try:
-            if self.mode == "direct_json":
-                prompt = build_risk_prediction_prompt(context)
-                raw_output = self.runner(prompt, self.model_id)
-                parsed = parse_llm_risk_prediction_output(raw_output)
-                debug_artifacts = {
-                    "prompt": prompt,
-                    "raw_output": raw_output,
-                    "parsed": parsed,
-                }
-            elif self.mode == "reason_then_json":
-                reasoning_prompt = build_prompt_from_config(
-                    context,
-                    "risk_prediction_reasoning",
-                )
-                reasoning_text = str(self.runner(reasoning_prompt, self.model_id))
-                finalizer_prompt = build_prompt_from_config(
-                    context,
-                    "risk_prediction_finalizer",
-                    reasoning_text=reasoning_text,
-                )
-                raw_output = self.runner(finalizer_prompt, self.model_id)
-                parsed = parse_llm_risk_prediction_output(raw_output)
-                debug_artifacts = {
-                    "reasoning_prompt": reasoning_prompt,
-                    "reasoning_text": reasoning_text,
-                    "finalizer_prompt": finalizer_prompt,
-                    "raw_output": raw_output,
-                    "parsed": parsed,
-                }
-            else:
-                raise ValueError(f"Unsupported risk prediction mode: {self.mode}")
-
+            prompt = build_risk_prediction_prompt(context)
+            raw_output = self.runner(prompt, self.model_id)
+            parsed = parse_llm_risk_prediction_output(raw_output)
             validated = LLMRiskPredictionOutput.model_validate(parsed)
         except Exception as error:
             return StageResult(
                 stage_name=self.name,
                 status=StageStatus.FAILED,
-                metadata={"model_id": self.model_id, "risk_mode": self.mode},
+                metadata={"model_id": self.model_id},
                 error=str(error),
             )
 
@@ -232,8 +190,11 @@ class LLMRiskPredictionStage:
             output=output,
             metadata={
                 "model_id": self.model_id,
-                "risk_mode": self.mode,
                 "prompt_stage": "risk_prediction",
-                "debug_artifacts": debug_artifacts,
+                "debug_artifacts": {
+                    "prompt": prompt,
+                    "raw_output": raw_output,
+                    "parsed": parsed,
+                },
             },
         )

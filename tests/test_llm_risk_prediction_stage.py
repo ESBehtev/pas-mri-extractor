@@ -158,7 +158,6 @@ class LLMRiskPredictionStageTest(unittest.TestCase):
 
         self.assertEqual(result.status, StageStatus.SUCCESS)
         self.assertEqual(result.output, LLM_OUTPUT)
-        self.assertEqual(result.metadata["risk_mode"], "direct_json")
         self.assertEqual(context.predicted_risks, LLM_OUTPUT["risk_assessment"])
         self.assertEqual(captured["model_id"], "mock-model")
         self.assertIn("MRI source text", captured["prompt"])
@@ -180,66 +179,6 @@ class LLMRiskPredictionStageTest(unittest.TestCase):
 
         self.assertEqual(result.stage_name, "LLMRiskPredictionStage")
         self.assertEqual(result.status, StageStatus.SUCCESS)
-
-    def test_reason_then_json_calls_runner_twice_and_validates_finalizer(self) -> None:
-        calls = []
-
-        def mock_runner(prompt, model_id):
-            calls.append(prompt)
-            if len(calls) == 1:
-                return "Клиническое рассуждение: умеренный риск."
-            return LLM_OUTPUT
-
-        context = PipelineContext(
-            source_text="MRI source text",
-            conclusion_text="MRI conclusion text",
-            extracted_result=EXTRACTED_RESULT,
-            evidence=EXTRACTED_RESULT["evidence"],
-        )
-
-        result = LLMRiskPredictionStage(
-            model_id="mock-model",
-            runner=mock_runner,
-            mode="reason_then_json",
-        ).run(context)
-
-        self.assertEqual(result.status, StageStatus.SUCCESS)
-        self.assertEqual(result.output, LLM_OUTPUT)
-        self.assertEqual(len(calls), 2)
-        self.assertIn("НЕ возвращай JSON", calls[0])
-        self.assertIn("reasoning_text", calls[1])
-        self.assertIn("Клиническое рассуждение", calls[1])
-        self.assertEqual(result.metadata["risk_mode"], "reason_then_json")
-        self.assertEqual(
-            result.metadata["debug_artifacts"]["reasoning_text"],
-            "Клиническое рассуждение: умеренный риск.",
-        )
-
-    def test_reason_then_json_fails_when_finalizer_schema_is_invalid(self) -> None:
-        def mock_runner(prompt, model_id):
-            if "НЕ возвращай JSON" in prompt:
-                return "reasoning"
-            return {
-                **LLM_OUTPUT,
-                "readiness": {
-                    **LLM_OUTPUT["readiness"],
-                    "level": "5",
-                },
-            }
-
-        context = PipelineContext(
-            source_text="MRI source text",
-            extracted_result=EXTRACTED_RESULT,
-        )
-
-        result = LLMRiskPredictionStage(
-            model_id="mock-model",
-            runner=mock_runner,
-            mode="reason_then_json",
-        ).run(context)
-
-        self.assertEqual(result.status, StageStatus.FAILED)
-        self.assertEqual(result.metadata["risk_mode"], "reason_then_json")
 
     def test_passed_runner_does_not_load_or_lookup_model(self) -> None:
         def mock_runner(prompt, model_id):

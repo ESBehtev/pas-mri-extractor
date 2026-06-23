@@ -153,6 +153,24 @@ BINARY_TASKS = {
     "bladder_involvement": "bladder_involvement_risk_percent",
 }
 BINARY_ACTUAL_FIELDS = set(BINARY_TASKS) | {"massive_blood_loss"}
+DEFAULT_CASE_METRICS = {
+    "blood_loss_error_ml": None,
+    "blood_loss_abs_error_ml": None,
+    "blood_loss_abs_percentage_error": None,
+    "readiness_match": None,
+    "vascular_actual": None,
+    "vascular_predicted": None,
+    "vascular_risk_percent": None,
+    "bladder_actual": None,
+    "bladder_predicted": None,
+    "bladder_risk_percent": None,
+    "hysterectomy_actual": None,
+    "hysterectomy_predicted": None,
+    "hysterectomy_risk_percent": None,
+    "transfusion_actual": None,
+    "transfusion_predicted": None,
+    "transfusion_risk_percent": None,
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -179,17 +197,6 @@ def parse_args() -> argparse.Namespace:
         "--join-key",
         default="case_id",
         help="Field used to join --input gold rows with --text-input rows.",
-    )
-    parser.add_argument(
-        "--risk-mode",
-        choices=["direct_json", "reason_then_json"],
-        default="direct_json",
-        help="Experimental LLM risk prediction mode.",
-    )
-    parser.add_argument(
-        "--include-debug",
-        action="store_true",
-        help="Include selected LLM debug artifacts such as reasoning_text.",
     )
     parser.add_argument(
         "--dry-run",
@@ -443,6 +450,55 @@ def strip_debug(value: Any) -> Any:
     return value
 
 
+def predicted_binary(risk_assessment: dict[str, Any], probability_field: str) -> bool | None:
+    probability = risk_assessment.get(probability_field)
+    if probability is None:
+        return None
+    return int(probability) >= 50
+
+
+def calculate_case_metrics(actual: dict[str, Any], llm_risk: dict[str, Any] | None) -> dict[str, Any]:
+    metrics = dict(DEFAULT_CASE_METRICS)
+    if not llm_risk:
+        return metrics
+
+    risk_assessment = llm_risk.get("risk_assessment") or {}
+    readiness = llm_risk.get("readiness") or {}
+
+    actual_blood_loss = actual.get("blood_loss_ml")
+    predicted_blood_loss = risk_assessment.get("estimated_blood_loss_ml")
+    if actual_blood_loss is not None and predicted_blood_loss is not None:
+        error = int(predicted_blood_loss) - int(actual_blood_loss)
+        abs_error = abs(error)
+        metrics["blood_loss_error_ml"] = error
+        metrics["blood_loss_abs_error_ml"] = abs_error
+        if int(actual_blood_loss) != 0:
+            metrics["blood_loss_abs_percentage_error"] = (
+                abs_error / int(actual_blood_loss) * 100
+            )
+
+    actual_readiness = actual.get("readiness_level")
+    predicted_readiness = readiness.get("level")
+    if actual_readiness is not None and predicted_readiness is not None:
+        metrics["readiness_match"] = str(actual_readiness) == str(predicted_readiness)
+
+    for task_name, probability_field in BINARY_TASKS.items():
+        metric_prefix = {
+            "vascular_intervention": "vascular",
+            "bladder_involvement": "bladder",
+        }.get(task_name, task_name)
+        actual_value = actual.get(task_name)
+        probability = risk_assessment.get(probability_field)
+
+        metrics[f"{metric_prefix}_actual"] = actual_value
+        metrics[f"{metric_prefix}_risk_percent"] = probability
+        metrics[f"{metric_prefix}_predicted"] = (
+            None if probability is None else int(probability) >= 50
+        )
+
+    return metrics
+
+
 def process_record(
     record: dict[str, Any],
     index: int,
@@ -450,8 +506,6 @@ def process_record(
     text_field: str,
     dry_run: bool,
     shared_model: Any = None,
-    risk_mode: str = "direct_json",
-    include_debug: bool = False,
     run_case_pipeline_fn: Callable[..., list[Any]] = run_case_pipeline,
     run_risk_prediction_fn: Callable[..., Any] = run_risk_prediction_experiment,
 ) -> dict[str, Any]:
@@ -462,9 +516,7 @@ def process_record(
         "actual": actual,
         "rule_based": None,
         "llm_risk": None,
-        "metadata": {
-            "risk_mode": risk_mode,
-        },
+        "metrics": dict(DEFAULT_CASE_METRICS),
         "errors": [],
         "warnings": warnings,
     }
@@ -501,7 +553,6 @@ def process_record(
             extracted_result=extracted_result,
             model_id=model_id,
             loaded_model=shared_model,
-            risk_mode=risk_mode,
         )
         if llm_result.status.value != "success":
             output["status"] = "failed"
@@ -511,13 +562,7 @@ def process_record(
             return output
 
         output["llm_risk"] = strip_debug(llm_result.output)
-        output["metadata"]["risk_mode"] = llm_result.metadata.get(
-            "risk_mode",
-            risk_mode,
-        )
-        debug_artifacts = llm_result.metadata.get("debug_artifacts") or {}
-        if include_debug and "reasoning_text" in debug_artifacts:
-            output["metadata"]["reasoning_text"] = debug_artifacts["reasoning_text"]
+        output["metrics"] = calculate_case_metrics(actual, output["llm_risk"])
         return output
     except Exception as error:
         output["status"] = "failed"
@@ -556,35 +601,41 @@ def binary_metrics(pairs: list[tuple[bool, bool]]) -> dict[str, Any]:
 def calculate_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     successful = [record for record in records if record.get("status") == "success"]
     blood_loss_errors: list[int] = []
-    readiness_pairs: list[tuple[str, str]] = []
+    blood_loss_apes: list[float] = []
+    readiness_matches: list[bool] = []
     binary_pairs: dict[str, list[tuple[bool, bool]]] = {
         task_name: [] for task_name in BINARY_TASKS
     }
 
     for record in successful:
-        actual = record.get("actual") or {}
-        llm_risk = record.get("llm_risk") or {}
-        risk_assessment = llm_risk.get("risk_assessment") or {}
-        readiness = llm_risk.get("readiness") or {}
+        metrics = record.get("metrics") or {}
+        if metrics.get("blood_loss_abs_error_ml") is not None:
+            blood_loss_errors.append(metrics["blood_loss_abs_error_ml"])
+        if metrics.get("blood_loss_abs_percentage_error") is not None:
+            blood_loss_apes.append(metrics["blood_loss_abs_percentage_error"])
+        if metrics.get("readiness_match") is not None:
+            readiness_matches.append(bool(metrics["readiness_match"]))
 
-        actual_blood_loss = actual.get("blood_loss_ml")
-        predicted_blood_loss = risk_assessment.get("estimated_blood_loss_ml")
-        if actual_blood_loss is not None and predicted_blood_loss is not None:
-            blood_loss_errors.append(abs(actual_blood_loss - predicted_blood_loss))
-
-        actual_readiness = actual.get("readiness_level")
-        predicted_readiness = readiness.get("level")
-        if actual_readiness is not None and predicted_readiness is not None:
-            readiness_pairs.append((str(actual_readiness), str(predicted_readiness)))
-
-        for task_name, probability_field in BINARY_TASKS.items():
-            actual_value = actual.get(task_name)
-            probability = risk_assessment.get(probability_field)
-            if actual_value is None or probability is None:
+        for task_name in BINARY_TASKS:
+            metric_prefix = {
+                "vascular_intervention": "vascular",
+                "bladder_involvement": "bladder",
+            }.get(task_name, task_name)
+            actual_value = metrics.get(f"{metric_prefix}_actual")
+            predicted_value = metrics.get(f"{metric_prefix}_predicted")
+            if actual_value is None or predicted_value is None:
                 continue
-            binary_pairs[task_name].append((bool(actual_value), int(probability) >= 50))
+            binary_pairs[task_name].append((bool(actual_value), bool(predicted_value)))
 
-    readiness_matches = sum(1 for actual, predicted in readiness_pairs if actual == predicted)
+    failed_cases = [
+        {
+            "case_id": record.get("case_id"),
+            "errors": record.get("errors") or [],
+            "warnings": record.get("warnings") or [],
+        }
+        for record in records
+        if record.get("status") == "failed"
+    ]
 
     return {
         "n_total": len(records),
@@ -595,57 +646,110 @@ def calculate_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
             if blood_loss_errors
             else None
         ),
-        "blood_loss_mae_n": len(blood_loss_errors),
-        "readiness_exact_match": (
-            readiness_matches / len(readiness_pairs) if readiness_pairs else None
+        "blood_loss_mape_percent": (
+            sum(blood_loss_apes) / len(blood_loss_apes)
+            if blood_loss_apes
+            else None
         ),
-        "readiness_exact_match_n": len(readiness_pairs),
+        "blood_loss_mae_n": len(blood_loss_errors),
+        "blood_loss_mape_n": len(blood_loss_apes),
+        "readiness_exact_match": (
+            sum(1 for value in readiness_matches if value) / len(readiness_matches)
+            if readiness_matches
+            else None
+        ),
+        "readiness_exact_match_n": len(readiness_matches),
         "binary_metrics": {
             task_name: binary_metrics(pairs)
             for task_name, pairs in binary_pairs.items()
         },
+        "failed_cases": failed_cases,
     }
 
 
-def print_case_summary(record: dict[str, Any]) -> None:
+def format_case_output(record: dict[str, Any]) -> str:
     actual = record.get("actual") or {}
     llm_risk = record.get("llm_risk") or {}
     risk_assessment = llm_risk.get("risk_assessment") or {}
     readiness = llm_risk.get("readiness") or {}
+    metrics = record.get("metrics") or {}
+    lines = [f"case_id={record.get('case_id')} | status={record.get('status')}"]
 
-    actual_blood_loss = actual.get("blood_loss_ml")
-    predicted_blood_loss = risk_assessment.get("estimated_blood_loss_ml")
-    absolute_error = (
-        abs(actual_blood_loss - predicted_blood_loss)
-        if actual_blood_loss is not None and predicted_blood_loss is not None
-        else None
+    if record.get("status") == "failed":
+        lines.append("  errors:")
+        for error in record.get("errors") or []:
+            lines.append(f"    - {error}")
+        lines.append("  warnings:")
+        for warning in record.get("warnings") or []:
+            lines.append(f"    - {warning}")
+        return "\n".join(lines)
+
+    lines.append(
+        "  blood_loss: "
+        f"actual={actual.get('blood_loss_ml')} | "
+        f"pred={risk_assessment.get('estimated_blood_loss_ml')} | "
+        f"error={format_signed(metrics.get('blood_loss_error_ml'))} | "
+        f"abs={metrics.get('blood_loss_abs_error_ml')} | "
+        f"ape={format_percent(metrics.get('blood_loss_abs_percentage_error'))}"
+    )
+    lines.append(
+        "  readiness: "
+        f"actual={actual.get('readiness_level')} | "
+        f"pred={readiness.get('level')} | "
+        f"match={metrics.get('readiness_match')}"
+    )
+    lines.append(format_binary_line("vascular", metrics))
+    lines.append(format_binary_line("bladder", metrics))
+    lines.append(format_binary_line("hysterectomy", metrics))
+    lines.append(format_binary_line("transfusion", metrics))
+    return "\n".join(lines)
+
+
+def format_binary_line(name: str, metrics: dict[str, Any]) -> str:
+    return (
+        f"  {name}: "
+        f"actual={metrics.get(f'{name}_actual')} | "
+        f"pred={metrics.get(f'{name}_predicted')} | "
+        f"risk={metrics.get(f'{name}_risk_percent')}"
     )
 
-    def pred_bool(field: str) -> bool | None:
-        value = risk_assessment.get(field)
-        return None if value is None else int(value) >= 50
 
-    print(
-        " | ".join(
-            [
-                f"case_id={record.get('case_id')}",
-                f"actual_blood_loss={actual_blood_loss}",
-                f"pred_blood_loss={predicted_blood_loss}",
-                f"abs_error={absolute_error}",
-                f"transfusion={actual.get('transfusion')}/"
-                f"{pred_bool('transfusion_risk_percent')}",
-                f"hysterectomy={actual.get('hysterectomy')}/"
-                f"{pred_bool('hysterectomy_risk_percent')}",
-                f"vascular={actual.get('vascular_intervention')}/"
-                f"{pred_bool('vascular_intervention_risk_percent')}",
-                f"bladder={actual.get('bladder_involvement')}/"
-                f"{pred_bool('bladder_involvement_risk_percent')}",
-                f"readiness={actual.get('readiness_level')}/"
-                f"{readiness.get('level')}",
-                f"status={record.get('status')}",
-            ]
+def format_signed(value: Any) -> str:
+    if value is None:
+        return "None"
+    return f"{int(value):+d}"
+
+
+def format_percent(value: Any) -> str:
+    if value is None:
+        return "None"
+    return f"{float(value):.1f}%"
+
+
+def format_summary_output(summary: dict[str, Any]) -> str:
+    lines = [
+        "=== SUMMARY ===",
+        f"n_total: {summary.get('n_total')}",
+        f"n_success: {summary.get('n_success')}",
+        f"n_failed: {summary.get('n_failed')}",
+        f"blood_loss_mae_ml: {summary.get('blood_loss_mae_ml')}",
+        f"blood_loss_mape_percent: {summary.get('blood_loss_mape_percent')}",
+        f"readiness_exact_match: {summary.get('readiness_exact_match')}",
+    ]
+    for task_name in BINARY_TASKS:
+        metrics = (summary.get("binary_metrics") or {}).get(task_name) or {}
+        lines.append(
+            f"{task_name}: "
+            f"accuracy={metrics.get('accuracy')}, "
+            f"precision={metrics.get('precision')}, "
+            f"recall={metrics.get('recall')}, "
+            f"f1={metrics.get('f1')}"
         )
-    )
+    if summary.get("failed_cases"):
+        lines.append("failed_cases:")
+        for case in summary["failed_cases"]:
+            lines.append(f"  - {case.get('case_id')}: {case.get('errors')}")
+    return "\n".join(lines)
 
 
 def main() -> None:
@@ -685,11 +789,9 @@ def main() -> None:
                     text_field=args.text_field,
                     dry_run=args.dry_run,
                     shared_model=shared_model,
-                    risk_mode=args.risk_mode,
-                    include_debug=args.include_debug,
                 )
                 evaluated.append(evaluated_record)
-                print_case_summary(evaluated_record)
+                print(format_case_output(evaluated_record))
                 json.dump(evaluated_record, handle, ensure_ascii=False)
                 handle.write("\n")
     finally:
@@ -701,7 +803,7 @@ def main() -> None:
         json.dump(summary, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
 
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    print(format_summary_output(summary))
 
 
 if __name__ == "__main__":
