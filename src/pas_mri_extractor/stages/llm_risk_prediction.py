@@ -18,6 +18,7 @@ EstimatedBloodLossRange = Literal[
     ">2500 мл",
 ]
 ReadinessLevel = Literal["1", "2", "3", "4"]
+RiskPredictionMode = Literal["direct_json", "reason_then_json"]
 LLMRiskPredictionRunner = Callable[[str, str | None], str | dict[str, Any]]
 
 
@@ -76,16 +77,7 @@ def _extract_evidence(extracted_result: Any) -> dict[str, Any] | None:
     return None
 
 
-def build_risk_prediction_prompt(context: PipelineContext) -> str:
-    prompt_config = load_stage_prompt("risk_prediction")
-    template = prompt_config.get("template")
-    if not template:
-        raise ValueError("risk_prediction prompt config must contain 'template'")
-
-    placeholder = prompt_config.get(
-        "case_context_placeholder",
-        "__CASE_CONTEXT_JSON__",
-    )
+def build_case_context_json(context: PipelineContext) -> str:
     case_context = {
         "source_text": context.source_text,
         "conclusion_text": context.conclusion_text,
@@ -93,13 +85,41 @@ def build_risk_prediction_prompt(context: PipelineContext) -> str:
         "evidence": context.evidence or _extract_evidence(context.extracted_result),
         "metadata": dict(context.metadata),
     }
-    case_context_json = json.dumps(
+    return json.dumps(
         case_context,
         ensure_ascii=False,
         indent=2,
     )
 
-    return str(template).replace(str(placeholder), case_context_json)
+
+def build_prompt_from_config(
+    context: PipelineContext,
+    prompt_config_name: str,
+    reasoning_text: str | None = None,
+) -> str:
+    prompt_config = load_stage_prompt(prompt_config_name)
+    template = prompt_config.get("template")
+    if not template:
+        raise ValueError(f"{prompt_config_name} prompt config must contain 'template'")
+
+    placeholder = prompt_config.get(
+        "case_context_placeholder",
+        "__CASE_CONTEXT_JSON__",
+    )
+    prompt = str(template).replace(str(placeholder), build_case_context_json(context))
+
+    if reasoning_text is not None:
+        reasoning_placeholder = prompt_config.get(
+            "reasoning_placeholder",
+            "__REASONING_TEXT__",
+        )
+        prompt = prompt.replace(str(reasoning_placeholder), reasoning_text)
+
+    return prompt
+
+
+def build_risk_prediction_prompt(context: PipelineContext) -> str:
+    return build_prompt_from_config(context, "risk_prediction")
 
 
 def parse_llm_risk_prediction_output(raw_output: str | dict[str, Any]) -> dict[str, Any]:
@@ -137,9 +157,11 @@ class LLMRiskPredictionStage:
         model_id: str | None = None,
         runner: LLMRiskPredictionRunner | None = None,
         loaded_model: Any | None = None,
+        mode: RiskPredictionMode = "direct_json",
     ) -> None:
         self.model_id = model_id
         self.loaded_model = loaded_model
+        self.mode = mode
         self.runner = runner or self._default_runner
 
     def _default_runner(self, prompt: str, model_id: str | None) -> str:
@@ -160,15 +182,44 @@ class LLMRiskPredictionStage:
             )
 
         try:
-            prompt = build_risk_prediction_prompt(context)
-            raw_output = self.runner(prompt, self.model_id)
-            parsed = parse_llm_risk_prediction_output(raw_output)
+            if self.mode == "direct_json":
+                prompt = build_risk_prediction_prompt(context)
+                raw_output = self.runner(prompt, self.model_id)
+                parsed = parse_llm_risk_prediction_output(raw_output)
+                debug_artifacts = {
+                    "prompt": prompt,
+                    "raw_output": raw_output,
+                    "parsed": parsed,
+                }
+            elif self.mode == "reason_then_json":
+                reasoning_prompt = build_prompt_from_config(
+                    context,
+                    "risk_prediction_reasoning",
+                )
+                reasoning_text = str(self.runner(reasoning_prompt, self.model_id))
+                finalizer_prompt = build_prompt_from_config(
+                    context,
+                    "risk_prediction_finalizer",
+                    reasoning_text=reasoning_text,
+                )
+                raw_output = self.runner(finalizer_prompt, self.model_id)
+                parsed = parse_llm_risk_prediction_output(raw_output)
+                debug_artifacts = {
+                    "reasoning_prompt": reasoning_prompt,
+                    "reasoning_text": reasoning_text,
+                    "finalizer_prompt": finalizer_prompt,
+                    "raw_output": raw_output,
+                    "parsed": parsed,
+                }
+            else:
+                raise ValueError(f"Unsupported risk prediction mode: {self.mode}")
+
             validated = LLMRiskPredictionOutput.model_validate(parsed)
         except Exception as error:
             return StageResult(
                 stage_name=self.name,
                 status=StageStatus.FAILED,
-                metadata={"model_id": self.model_id},
+                metadata={"model_id": self.model_id, "risk_mode": self.mode},
                 error=str(error),
             )
 
@@ -181,11 +232,8 @@ class LLMRiskPredictionStage:
             output=output,
             metadata={
                 "model_id": self.model_id,
+                "risk_mode": self.mode,
                 "prompt_stage": "risk_prediction",
-                "debug_artifacts": {
-                    "prompt": prompt,
-                    "raw_output": raw_output,
-                    "parsed": parsed,
-                },
+                "debug_artifacts": debug_artifacts,
             },
         )

@@ -181,6 +181,17 @@ def parse_args() -> argparse.Namespace:
         help="Field used to join --input gold rows with --text-input rows.",
     )
     parser.add_argument(
+        "--risk-mode",
+        choices=["direct_json", "reason_then_json"],
+        default="direct_json",
+        help="Experimental LLM risk prediction mode.",
+    )
+    parser.add_argument(
+        "--include-debug",
+        action="store_true",
+        help="Include selected LLM debug artifacts such as reasoning_text.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Read and map fields only. Does not load an LLM.",
@@ -439,6 +450,8 @@ def process_record(
     text_field: str,
     dry_run: bool,
     shared_model: Any = None,
+    risk_mode: str = "direct_json",
+    include_debug: bool = False,
     run_case_pipeline_fn: Callable[..., list[Any]] = run_case_pipeline,
     run_risk_prediction_fn: Callable[..., Any] = run_risk_prediction_experiment,
 ) -> dict[str, Any]:
@@ -449,6 +462,9 @@ def process_record(
         "actual": actual,
         "rule_based": None,
         "llm_risk": None,
+        "metadata": {
+            "risk_mode": risk_mode,
+        },
         "errors": [],
         "warnings": warnings,
     }
@@ -485,6 +501,7 @@ def process_record(
             extracted_result=extracted_result,
             model_id=model_id,
             loaded_model=shared_model,
+            risk_mode=risk_mode,
         )
         if llm_result.status.value != "success":
             output["status"] = "failed"
@@ -494,6 +511,13 @@ def process_record(
             return output
 
         output["llm_risk"] = strip_debug(llm_result.output)
+        output["metadata"]["risk_mode"] = llm_result.metadata.get(
+            "risk_mode",
+            risk_mode,
+        )
+        debug_artifacts = llm_result.metadata.get("debug_artifacts") or {}
+        if include_debug and "reasoning_text" in debug_artifacts:
+            output["metadata"]["reasoning_text"] = debug_artifacts["reasoning_text"]
         return output
     except Exception as error:
         output["status"] = "failed"
@@ -661,6 +685,8 @@ def main() -> None:
                     text_field=args.text_field,
                     dry_run=args.dry_run,
                     shared_model=shared_model,
+                    risk_mode=args.risk_mode,
+                    include_debug=args.include_debug,
                 )
                 evaluated.append(evaluated_record)
                 print_case_summary(evaluated_record)

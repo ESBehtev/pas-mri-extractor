@@ -1,10 +1,12 @@
 import unittest
+from unittest.mock import patch
 
 from pas_mri_extractor.stages import StageResult, StageStatus
 from scripts.evaluate_llm_risk import (
     calculate_summary,
     extract_case_fields,
     join_gold_with_text_records,
+    parse_args,
     process_record,
 )
 
@@ -125,13 +127,16 @@ class EvaluateLLMRiskTest(unittest.TestCase):
             ]
 
         def mock_run_risk_prediction(**kwargs):
+            self.assertEqual(kwargs["risk_mode"], "reason_then_json")
             return StageResult(
                 stage_name="LLMRiskPredictionStage",
                 status=StageStatus.SUCCESS,
                 output=LLM_RISK,
                 metadata={
+                    "risk_mode": "reason_then_json",
                     "debug_artifacts": {
                         "prompt": "should be stripped",
+                        "reasoning_text": "reasoning should be kept only with debug",
                     }
                 },
             )
@@ -143,6 +148,8 @@ class EvaluateLLMRiskTest(unittest.TestCase):
             text_field="auto",
             dry_run=False,
             shared_model=object(),
+            risk_mode="reason_then_json",
+            include_debug=True,
             run_case_pipeline_fn=mock_run_case_pipeline,
             run_risk_prediction_fn=mock_run_risk_prediction,
         )
@@ -150,7 +157,21 @@ class EvaluateLLMRiskTest(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["case_id"], "case-1")
         self.assertEqual(result["llm_risk"], LLM_RISK)
+        self.assertEqual(result["metadata"]["risk_mode"], "reason_then_json")
+        self.assertEqual(
+            result["metadata"]["reasoning_text"],
+            "reasoning should be kept only with debug",
+        )
         self.assertNotIn("debug_artifacts", result["llm_risk"])
+
+    def test_parse_args_accepts_risk_mode(self) -> None:
+        with patch(
+            "sys.argv",
+            ["evaluate_llm_risk.py", "--risk-mode", "reason_then_json"],
+        ):
+            args = parse_args()
+
+        self.assertEqual(args.risk_mode, "reason_then_json")
 
     def test_join_gold_with_text_records_builds_mri_text_from_text_input(self) -> None:
         gold_records = [
