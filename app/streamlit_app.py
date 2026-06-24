@@ -35,6 +35,12 @@ def preload_model(model_name: str):
     return get_cached_model(model_name)
 
 
+def combined_json_download_key(status: str | None) -> str:
+    run_id = st.session_state.get("analysis_run_id", 0)
+    safe_status = status or "unknown"
+    return f"combined_json_download_{run_id}_{safe_status}"
+
+
 st.set_page_config(
     page_title="PAS MRI Extractor",
     page_icon="🧠",
@@ -248,6 +254,9 @@ with extract_tab:
                 render_json_export(
                     st.session_state.get("combined_result_json") or current_result,
                     extractor_only_result=current_result,
+                    download_key=combined_json_download_key(
+                        current_llm_risk_result.get("status"),
+                    ),
                 )
 
             rendered_current_request = True
@@ -296,6 +305,9 @@ with extract_tab:
                     render_json_export(
                         st.session_state.get("combined_result_json") or current_result,
                         extractor_only_result=current_result,
+                        download_key=combined_json_download_key(
+                            current_llm_risk_result.get("status"),
+                        ),
                     )
 
             result, dual_result, sections, last_diagnostic_mode = get_last_outputs()
@@ -332,6 +344,9 @@ with extract_tab:
         render_json_export(
             st.session_state.get("combined_result_json") or result,
             extractor_only_result=result,
+            download_key=combined_json_download_key(
+                st.session_state.get("llm_risk_status"),
+            ),
         )
     elif not rendered_current_request:
         st.markdown("---")

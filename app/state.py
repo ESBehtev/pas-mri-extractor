@@ -28,6 +28,7 @@ SESSION_DEFAULTS = {
     "llm_risk_errors": [],
     "llm_risk_warnings": [],
     "combined_result_json": None,
+    "analysis_run_id": 0,
     "last_model_name": None,
     "last_diagnostic_mode": False,
     "report_text": "",
@@ -47,6 +48,7 @@ def set_running(is_running: bool) -> None:
 
 def request_extraction() -> None:
     st.session_state["extract_requested"] = True
+    st.session_state["analysis_run_id"] = st.session_state.get("analysis_run_id", 0) + 1
 
 
 def clear_extraction_request() -> None:

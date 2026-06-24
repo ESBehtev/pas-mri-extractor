@@ -896,6 +896,7 @@ def render_risk_prediction_comparison(
 def render_json_export(
     result: dict | None,
     extractor_only_result: dict | None = None,
+    download_key: str = "combined_json_download",
 ) -> None:
     if not result:
         st.info("Нет результата для отображения.")
@@ -908,6 +909,7 @@ def render_json_export(
             data=json.dumps(result, ensure_ascii=False, indent=2),
             file_name="pas_mri_result_combined.json",
             mime="application/json",
+            key=download_key,
         )
 
     if extractor_only_result:
