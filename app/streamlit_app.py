@@ -5,8 +5,8 @@ from components import (
     render_clinical_result,
     render_dual_comparison,
     render_json_export,
-    render_llm_risk_prediction,
     render_report_sections,
+    render_risk_prediction_comparison,
     stage_result_to_llm_risk_ui,
 )
 from config_studio import render_config_studio
@@ -196,7 +196,13 @@ with extract_tab:
                             model_name=model_name,
                         )
 
-            current_llm_risk_result = None
+            current_llm_risk_result = {
+                "stage_name": "LLMRiskPredictionStage",
+                "status": "skipped",
+                "llm_risk": None,
+                "errors": [],
+                "warnings": [],
+            }
             if run_llm_risk_prediction:
                 with st.spinner("Выполняется LLM-прогноз хирургических рисков..."):
                     try:
@@ -258,9 +264,8 @@ with extract_tab:
         st.markdown("---")
         render_clinical_result(result, st.session_state.get("report_text"))
 
-        if llm_risk_result:
-            st.markdown("---")
-            render_llm_risk_prediction(llm_risk_result)
+        st.markdown("---")
+        render_risk_prediction_comparison(result, llm_risk_result)
 
         st.markdown("---")
         render_json_export(result)

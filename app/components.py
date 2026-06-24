@@ -8,11 +8,21 @@ import streamlit as st
 try:
     from llm_risk_helpers import (
         build_extracted_result_for_llm_risk,
+        format_ml,
+        format_percent,
+        normalize_llm_risk,
+        normalize_rule_based_risk,
+        risk_level_from_percent,
         stage_result_to_llm_risk_ui,
     )
 except ModuleNotFoundError:
     from app.llm_risk_helpers import (
         build_extracted_result_for_llm_risk,
+        format_ml,
+        format_percent,
+        normalize_llm_risk,
+        normalize_rule_based_risk,
+        risk_level_from_percent,
         stage_result_to_llm_risk_ui,
     )
 
@@ -55,12 +65,6 @@ def ru(value: Any) -> str:
 
 def ru_upper(value: Any) -> str:
     return ru(value).upper()
-
-
-def percent_value(value: Any) -> str:
-    if value is None:
-        return "нет данных"
-    return f"{value}%"
 
 
 def as_list(value: Any) -> list[str]:
@@ -598,9 +602,6 @@ def render_clinical_result(result: dict | None, report_text: str | None = None) 
     clinical_context = features.get("clinical_context", {})
     suspicion = result.get("suspicion") or {}
     evidence = result.get("evidence", {})
-    score = result.get("score", {})
-    predicted_risks = result.get("predicted_risks", {})
-    recommendation = result.get("recommendation", {})
 
     st.subheader("Краткое заключение")
     render_summary_cards(result)
@@ -717,158 +718,172 @@ def render_clinical_result(result: dict | None, report_text: str | None = None) 
 
     render_evidence_highlighting(result, report_text)
 
-    st.subheader("Прогнозируемые риски")
-    risk_col1, risk_col2, risk_col3, risk_col4 = st.columns(4)
 
-    with risk_col1:
-        st.metric(
+def colorize_percent_risk(value: Any) -> str:
+    mapping = {
+        "low": "#16a34a",
+        "moderate": "#f59e0b",
+        "high": "#ea580c",
+        "very_high": "#dc2626",
+        "unknown": "#9ca3af",
+    }
+    return mapping[risk_level_from_percent(value)]
+
+
+def risk_rows_from_prediction(prediction: dict[str, Any], source: str) -> list[tuple[str, Any, str | None]]:
+    rows = [
+        (
             "Кровопотеря >1500 мл",
-            f"{ru(predicted_risks.get('massive_blood_loss_over_1500_ml_percent'))}%",
-        )
-
-    with risk_col2:
-        st.metric(
+            format_percent(prediction.get("massive_blood_loss_risk")),
+            colorize_percent_risk(prediction.get("massive_blood_loss_risk")),
+        ),
+        (
             "Оценочная кровопотеря",
-            ru(predicted_risks.get("estimated_blood_loss_ml_range")),
-        )
-
-    with risk_col3:
-        st.metric(
-            "Вероятность сосудистого вмешательства",
-            f"{ru(predicted_risks.get('vascular_intervention_percent'))}%",
-        )
-
-    with risk_col4:
-        st.metric(
-            "Риск вовлечения мочевого пузыря",
-            f"{ru(predicted_risks.get('bladder_involvement_percent'))}%",
-        )
-
-    score_reasons = as_list(score.get("score_reasons"))
-    if score_reasons:
-        st.subheader("Причины оценки")
-        for reason in score_reasons[:3]:
-            finding_box(reason, "#64748b")
-
-        hidden_reasons = score_reasons[3:]
-        if hidden_reasons:
-            with st.expander(
-                f"Показать ещё ({len(hidden_reasons)})",
-                expanded=False,
-            ):
-                for reason in hidden_reasons:
-                    finding_box(reason, "#64748b")
-
-    st.subheader("Рекомендация по готовности")
-    readiness_level = recommendation.get("readiness_level")
-    readiness_text = recommendation.get("readiness_text")
-
-    if readiness_level or readiness_text:
-        readiness_box(readiness_level, readiness_text)
-    else:
-        st.write("Нет данных")
-
-    risk_summary_text = predicted_risks.get("risk_summary_text")
-    if risk_summary_text:
-        st.subheader("Сводка рисков")
-        finding_box(risk_summary_text, colorize_risk(score.get("risk_group")))
-
-    computed_rationale = result.get("computed_rationale")
-    if computed_rationale:
-        st.subheader("Расчётное обоснование")
-        st.write(computed_rationale)
-
-
-def render_llm_risk_prediction(stage_result: dict | None) -> None:
-    if not stage_result:
-        return
-
-    st.subheader("LLM-прогноз хирургических рисков")
-
-    status = stage_result.get("status")
-    warnings = stage_result.get("warnings") or []
-    errors = stage_result.get("errors") or []
-
-    if status == "success":
-        st.success("LLM-прогноз рисков выполнен")
-    elif status == "failed":
-        st.error("LLM-прогноз рисков не выполнен")
-    else:
-        st.warning(f"Статус LLM-прогноза: {ru(status)}")
-
-    if warnings or errors:
-        with st.expander("Ошибки и предупреждения LLM-прогноза", expanded=False):
-            for error in errors:
-                st.error(error)
-            for warning in warnings:
-                st.warning(warning)
-
-    if status != "success":
-        return
-
-    llm_risk = stage_result.get("llm_risk") or {}
-    risk_assessment = llm_risk.get("risk_assessment") or {}
-    readiness = llm_risk.get("readiness") or {}
-    operative_summary = llm_risk.get("operative_risk_summary") or {}
-    clinical_summary = llm_risk.get("clinical_summary") or {}
-
-    st.markdown("#### Основные числовые риски")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric(
-            "Кровопотеря >1500 мл",
-            percent_value(risk_assessment.get("massive_blood_loss_risk_percent")),
-        )
-    with col2:
-        st.metric(
-            "Оценка кровопотери",
-            ru(risk_assessment.get("estimated_blood_loss_ml")),
-        )
-    with col3:
-        st.metric(
-            "Диапазон кровопотери",
-            ru(risk_assessment.get("estimated_blood_loss_range")),
-        )
-    with col4:
-        st.metric(
+            (
+                format_ml(prediction.get("estimated_blood_loss"))
+                if source == "llm"
+                else prediction.get("estimated_blood_loss")
+            ),
+            None,
+        ),
+        (
+            "Диапазон",
+            prediction.get("estimated_blood_loss_range"),
+            None,
+        ),
+        (
             "Сосудистое вмешательство",
-            percent_value(risk_assessment.get("vascular_intervention_risk_percent")),
-        )
-
-    col5, col6, col7 = st.columns(3)
-    with col5:
-        st.metric(
+            format_percent(prediction.get("vascular_intervention_risk")),
+            colorize_percent_risk(prediction.get("vascular_intervention_risk")),
+        ),
+        (
             "Вовлечение мочевого пузыря",
-            percent_value(risk_assessment.get("bladder_involvement_risk_percent")),
-        )
-    with col6:
-        st.metric(
+            format_percent(prediction.get("bladder_involvement_risk")),
+            colorize_percent_risk(prediction.get("bladder_involvement_risk")),
+        ),
+        (
             "Гистерэктомия",
-            percent_value(risk_assessment.get("hysterectomy_risk_percent")),
-        )
-    with col7:
-        st.metric(
+            format_percent(prediction.get("hysterectomy_risk"))
+            if prediction.get("hysterectomy_risk") is not None
+            else "—",
+            colorize_percent_risk(prediction.get("hysterectomy_risk")),
+        ),
+        (
             "Трансфузия",
-            percent_value(risk_assessment.get("transfusion_risk_percent")),
+            format_percent(prediction.get("transfusion_risk"))
+            if prediction.get("transfusion_risk") is not None
+            else "—",
+            colorize_percent_risk(prediction.get("transfusion_risk")),
+        ),
+        ("Readiness", prediction.get("readiness_level") or "—", None),
+    ]
+    return rows
+
+
+def render_rule_based_prediction(rule_based_result: dict | None) -> None:
+    prediction = normalize_rule_based_risk(rule_based_result)
+    st.markdown("### Rule-based прогноз")
+
+    if not prediction.get("available"):
+        st.info("Rule-based результат недоступен")
+        return
+
+    feature_card(
+        "Алгоритмическая оценка",
+        risk_rows_from_prediction(prediction, "rule"),
+    )
+
+    if prediction.get("readiness_rationale"):
+        readiness_box(
+            prediction.get("readiness_level"),
+            prediction.get("readiness_rationale"),
         )
 
-    st.markdown("#### Готовность")
-    readiness_box(readiness.get("level"), readiness.get("rationale"))
+    score_reasons = as_list(prediction.get("score_reasons"))
+    if score_reasons:
+        with st.expander("Причины оценки", expanded=False):
+            for reason in score_reasons:
+                finding_box(reason, "#64748b")
 
-    st.markdown("#### Резюме")
-    summary_col1, summary_col2 = st.columns(2)
-    with summary_col1:
-        st.markdown("**Операционный риск**")
-        st.write(operative_summary.get("text") or "Нет данных")
-    with summary_col2:
-        st.markdown("**Клиническое резюме**")
-        st.write(clinical_summary.get("text") or "Нет данных")
+    if prediction.get("risk_summary_text"):
+        with st.expander("Сводка rule-based риска", expanded=False):
+            st.write(prediction["risk_summary_text"])
 
-    st.markdown("#### Уверенность")
-    st.write(ru(llm_risk.get("confidence")))
+    if prediction.get("computed_rationale"):
+        with st.expander("Расчётное обоснование", expanded=False):
+            st.write(prediction["computed_rationale"])
 
-    with st.expander("LLM risk JSON", expanded=False):
-        st.json(llm_risk)
+    with st.expander("Raw rule-based JSON", expanded=False):
+        st.json(prediction.get("raw"))
+
+
+def render_llm_prediction(stage_result: dict | None) -> None:
+    prediction = normalize_llm_risk(stage_result)
+    st.markdown("### LLM-прогноз хирургических рисков")
+
+    if not prediction.get("available"):
+        if prediction.get("status") == "failed":
+            st.error(prediction.get("message"))
+        else:
+            st.info(prediction.get("message"))
+
+        errors = prediction.get("errors") or []
+        warnings = prediction.get("warnings") or []
+        if errors or warnings:
+            with st.expander("Ошибки и предупреждения LLM-прогноза", expanded=False):
+                for error in errors:
+                    st.error(error)
+                for warning in warnings:
+                    st.warning(warning)
+        return
+
+    feature_card(
+        "Модельный прогноз",
+        risk_rows_from_prediction(prediction, "llm"),
+    )
+
+    readiness_box(
+        prediction.get("readiness_level"),
+        prediction.get("readiness_rationale"),
+    )
+
+    st.markdown("**Уверенность**")
+    st.write(ru(prediction.get("confidence")))
+
+    if prediction.get("operative_risk_summary"):
+        with st.expander("Операционный риск", expanded=False):
+            st.write(prediction["operative_risk_summary"])
+
+    if prediction.get("clinical_summary"):
+        with st.expander("Клиническое резюме", expanded=False):
+            st.write(prediction["clinical_summary"])
+
+    with st.expander("Raw LLM JSON", expanded=False):
+        st.json(prediction.get("raw"))
+
+
+def render_risk_prediction_comparison(
+    rule_based_result: dict | None,
+    llm_stage_result: dict | None,
+) -> None:
+    st.subheader("Сравнение прогнозов риска")
+    left_col, right_col = st.columns(2)
+
+    with left_col:
+        render_rule_based_prediction(rule_based_result)
+
+    with right_col:
+        render_llm_prediction(llm_stage_result)
+
+    st.caption(
+        "Rule-based — алгоритмическая оценка на основе извлечённых признаков "
+        "и весовых правил. LLM — прогноз большой языковой модели на основе "
+        "исходного текста МРТ, extracted_result и evidence."
+    )
+    st.warning(
+        "Оба результата являются исследовательскими и не предназначены для "
+        "самостоятельного клинического применения."
+    )
 
 
 def render_json_export(result: dict | None) -> None:

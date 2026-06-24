@@ -2,6 +2,11 @@ import unittest
 
 from app.llm_risk_helpers import (
     build_extracted_result_for_llm_risk,
+    format_ml,
+    format_percent,
+    normalize_llm_risk,
+    normalize_rule_based_risk,
+    risk_level_from_percent,
     stage_result_to_llm_risk_ui,
 )
 from pas_mri_extractor.stages import StageResult, StageStatus
@@ -63,6 +68,83 @@ class LLMRiskUIHelpersTest(unittest.TestCase):
             {"risk_assessment": {"estimated_blood_loss_ml": 1200}},
         )
         self.assertNotIn("metadata", payload)
+
+    def test_format_percent_and_ml_handle_missing_values(self) -> None:
+        self.assertEqual(format_percent(None), "—")
+        self.assertEqual(format_percent(25), "25%")
+        self.assertEqual(format_percent(12.5), "12.5%")
+        self.assertEqual(format_ml(None), "—")
+        self.assertEqual(format_ml(1200), "1200 мл")
+
+    def test_risk_level_from_percent(self) -> None:
+        self.assertEqual(risk_level_from_percent(None), "unknown")
+        self.assertEqual(risk_level_from_percent(10), "low")
+        self.assertEqual(risk_level_from_percent(25), "moderate")
+        self.assertEqual(risk_level_from_percent(50), "high")
+        self.assertEqual(risk_level_from_percent(75), "very_high")
+
+    def test_normalize_rule_based_risk(self) -> None:
+        result = {
+            "predicted_risks": {
+                "massive_blood_loss_over_1500_ml_percent": 70,
+                "estimated_blood_loss_ml_range": "1500–3000 мл",
+                "vascular_intervention_percent": 50,
+                "bladder_involvement_percent": 30,
+                "risk_summary_text": "summary",
+            },
+            "recommendation": {
+                "readiness_level": "3",
+                "readiness_text": "high readiness",
+            },
+            "score": {
+                "score_reasons": "increta: +3",
+            },
+        }
+
+        normalized = normalize_rule_based_risk(result)
+
+        self.assertTrue(normalized["available"])
+        self.assertEqual(normalized["massive_blood_loss_risk"], 70)
+        self.assertEqual(normalized["estimated_blood_loss"], "1500–3000 мл")
+        self.assertIsNone(normalized["hysterectomy_risk"])
+        self.assertEqual(normalized["readiness_level"], "3")
+
+    def test_normalize_llm_risk_success_and_skipped(self) -> None:
+        payload = {
+            "status": "success",
+            "llm_risk": {
+                "risk_assessment": {
+                    "massive_blood_loss_risk_percent": 65,
+                    "estimated_blood_loss_ml": 1800,
+                    "estimated_blood_loss_range": "1500–2500 мл",
+                    "vascular_intervention_risk_percent": 55,
+                    "bladder_involvement_risk_percent": 30,
+                    "hysterectomy_risk_percent": 25,
+                    "transfusion_risk_percent": 70,
+                },
+                "readiness": {
+                    "level": "3",
+                    "rationale": "rationale",
+                },
+                "operative_risk_summary": {
+                    "text": "operative",
+                },
+                "clinical_summary": {
+                    "text": "clinical",
+                },
+                "confidence": "medium",
+            },
+        }
+
+        normalized = normalize_llm_risk(payload)
+        skipped = normalize_llm_risk(None)
+
+        self.assertTrue(normalized["available"])
+        self.assertEqual(normalized["estimated_blood_loss"], 1800)
+        self.assertEqual(normalized["hysterectomy_risk"], 25)
+        self.assertEqual(normalized["confidence"], "medium")
+        self.assertFalse(skipped["available"])
+        self.assertEqual(skipped["status"], "skipped")
 
 
 if __name__ == "__main__":
