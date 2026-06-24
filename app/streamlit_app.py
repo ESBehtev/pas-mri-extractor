@@ -253,7 +253,6 @@ with extract_tab:
                 st.markdown("---")
                 render_json_export(
                     st.session_state.get("combined_result_json") or current_result,
-                    extractor_only_result=current_result,
                     download_key=combined_json_download_key(
                         current_llm_risk_result.get("status"),
                     ),
@@ -304,7 +303,6 @@ with extract_tab:
                     st.markdown("---")
                     render_json_export(
                         st.session_state.get("combined_result_json") or current_result,
-                        extractor_only_result=current_result,
                         download_key=combined_json_download_key(
                             current_llm_risk_result.get("status"),
                         ),
@@ -343,7 +341,6 @@ with extract_tab:
         st.markdown("---")
         render_json_export(
             st.session_state.get("combined_result_json") or result,
-            extractor_only_result=result,
             download_key=combined_json_download_key(
                 st.session_state.get("llm_risk_status"),
             ),

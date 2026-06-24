@@ -895,7 +895,6 @@ def render_risk_prediction_comparison(
 
 def render_json_export(
     result: dict | None,
-    extractor_only_result: dict | None = None,
     download_key: str = "combined_json_download",
 ) -> None:
     if not result:
@@ -911,7 +910,3 @@ def render_json_export(
             mime="application/json",
             key=download_key,
         )
-
-    if extractor_only_result:
-        with st.expander("Extractor-only JSON", expanded=False):
-            st.json(extractor_only_result)
