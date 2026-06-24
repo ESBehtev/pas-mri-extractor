@@ -1,3 +1,10 @@
+"""Stage-обёртка над текущим extraction pipeline.
+Зачем нужен:
+- не менять существующую extractor logic и prompt;
+- упаковать результат извлечения в StageResult;
+- передать extracted_result/evidence дальше по PipelineContext.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Callable

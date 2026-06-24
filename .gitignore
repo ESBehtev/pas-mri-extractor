@@ -209,6 +209,9 @@ cython_debug/
 # .vscode/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
+*.tmp
+*.bak
+*.old
 
 # Ruff stuff:
 .ruff_cache/
@@ -218,6 +221,8 @@ runtime_configs/
 
 # Project data/model/eval artifacts
 data/
+data/raw*/
+data/anonymized*/
 outputs/
 outputs_server/
 models/

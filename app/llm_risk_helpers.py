@@ -1,3 +1,10 @@
+"""Вспомогательные функции Streamlit UI для LLM risk prediction.
+Зачем нужен:
+- нормализовать rule-based и LLM-прогноз для отображения;
+- собрать безопасный combined JSON без debug artifacts;
+- форматировать проценты, мл и статусы риска.
+"""
+
 import copy
 from typing import Any
 

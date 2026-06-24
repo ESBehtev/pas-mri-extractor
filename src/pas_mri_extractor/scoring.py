@@ -1,8 +1,8 @@
-"""
-Расчёт клинического score, риск-группы и рекомендаций.
-
-На вход получает валидированный результат экстракции.
-Основная логика пока перенесена из исходного ноутбука.
+"""Rule-based scoring и readiness для валидированного PAS JSON.
+Зачем нужен:
+- рассчитать clinical score и risk_group;
+- получить predicted_risks и readiness recommendation;
+- сохранить deterministic baseline для UI и benchmark.
 """
 
 from copy import deepcopy

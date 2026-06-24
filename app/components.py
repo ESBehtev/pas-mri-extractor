@@ -1,3 +1,10 @@
+"""Компоненты Streamlit UI для отображения результата PAS MRI Extractor.
+Зачем нужен:
+- карточки извлечённых признаков, evidence и подсветка текста;
+- сравнение rule-based и LLM-прогноза рисков;
+- экспорт итогового combined JSON.
+"""
+
 import html
 import json
 from textwrap import dedent

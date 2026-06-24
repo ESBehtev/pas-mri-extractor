@@ -1,3 +1,10 @@
+"""Тесты experimental LLMRiskPredictionStage.
+Проверяют:
+- Pydantic schema прогноза;
+- stage wiring и mock runner;
+- отсутствие повторной загрузки модели при переданном runner/model.
+"""
+
 import unittest
 from unittest.mock import patch
 

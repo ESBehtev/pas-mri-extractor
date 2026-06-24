@@ -1,3 +1,10 @@
+"""Тесты helper-слоя Streamlit UI для LLM/rule-based risk export.
+Проверяют:
+- нормализацию risk блоков для UI;
+- сбор combined JSON без debug artifacts;
+- форматирование статусов, процентов и миллилитров.
+"""
+
 import unittest
 
 from app.llm_risk_helpers import (

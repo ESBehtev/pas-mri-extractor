@@ -1,3 +1,10 @@
+"""Экспериментальная LLM-стадия прогноза хирургических рисков PAS.
+Зачем нужен:
+- построить case context из текста, extracted_result и evidence;
+- вызвать stage prompt risk_prediction.yaml через переданный runner/model;
+- валидировать строгий JSON прогноза через Pydantic.
+"""
+
 from __future__ import annotations
 
 import json

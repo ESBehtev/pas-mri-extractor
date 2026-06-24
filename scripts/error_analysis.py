@@ -1,8 +1,8 @@
-"""
-Analyze errors from experimental LLM risk prediction evaluation JSONL.
-
-This script reads outputs produced by scripts/evaluate_llm_risk.py and writes a
-machine-readable JSON report plus a compact Markdown summary.
+"""Анализ ошибок LLM risk prediction по результатам benchmark JSONL.
+Зачем нужен:
+- считать ошибки кровопотери и readiness;
+- искать признаки и паттерны завышения/занижения риска;
+- писать machine-readable JSON и компактный Markdown отчёт.
 """
 
 from __future__ import annotations

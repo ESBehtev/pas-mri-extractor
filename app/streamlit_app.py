@@ -1,3 +1,10 @@
+"""Streamlit-интерфейс исследовательского прототипа PAS MRI Extractor.
+Файл собирает пользовательский UI:
+- ввод МРТ-описания и выбор модели;
+- запуск extractor и rule-based оценки;
+- отображение LLM-прогноза рисков и экспорт итогового JSON.
+"""
+
 import streamlit as st
 
 from components import (

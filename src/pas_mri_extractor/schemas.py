@@ -1,13 +1,8 @@
-"""
-Pydantic-схемы результата.
-
-LLM возвращает только:
-- case_info
-- extracted_features
-- suspicion
-- evidence
-
-Скоринг и рекомендации добавляются кодом после валидации результата.
+"""Pydantic-схемы extractor и scored результата.
+Зачем нужен:
+- описать canonical PAS JSON contract;
+- сохранить uncertainty через evidence и suspicion;
+- отделить LLM extraction payload от rule-based scoring output.
 """
 
 from typing import Any, Literal

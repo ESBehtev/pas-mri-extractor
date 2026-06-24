@@ -1,3 +1,10 @@
+"""Prompt registry для stage-based архитектуры.
+Зачем нужен:
+- резолвить активный extractor prompt без изменения старого пути;
+- загружать planned/experimental prompt configs по stage name;
+- давать понятную ошибку при неизвестной стадии.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

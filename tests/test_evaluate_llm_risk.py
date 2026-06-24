@@ -1,3 +1,10 @@
+"""Тесты терминального benchmark scripts/evaluate_llm_risk.py.
+Проверяют:
+- извлечение gold/text полей;
+- расчёт per-case и summary метрик;
+- форматирование console output без запуска LLM.
+"""
+
 import unittest
 
 from pas_mri_extractor.stages import StageResult, StageStatus

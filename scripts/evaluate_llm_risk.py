@@ -1,8 +1,8 @@
-"""
-Evaluate experimental LLMRiskPredictionStage against gold JSONL outcomes.
-
-This script is intended for server-side terminal runs. Use --dry-run locally to
-verify JSONL reading and field mapping without loading an LLM.
+"""Терминальный benchmark экспериментального LLM risk prediction.
+Зачем нужен:
+- прогонять LLMRiskPredictionStage по gold JSONL;
+- сравнивать predicted vs actual outcomes;
+- писать JSONL с результатами и summary metrics.
 """
 
 from __future__ import annotations

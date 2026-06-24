@@ -273,6 +273,19 @@ PYTHONPATH=src python scripts/evaluate_predictions.py \
   --limit 10
 ```
 
+Benchmark experimental LLM risk prediction на размеченном PAS20 JSONL:
+
+```bash
+PYTHONPATH=src python scripts/evaluate_llm_risk.py \
+  --input data/evaluation/pas20.jsonl \
+  --text-input data/evaluation/dataset_sheet3.jsonl \
+  --join-key case_id \
+  --output outputs/llm_risk_eval_20.jsonl \
+  --summary-output outputs/llm_risk_eval_20_summary.json \
+  --model qwen3_6_35b_a3b_gguf \
+  --limit 20
+```
+
 Результаты:
 
 ```text

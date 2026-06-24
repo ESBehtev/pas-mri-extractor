@@ -1,3 +1,10 @@
+"""Простой синхронный orchestrator для stage-based архитектуры.
+Зачем нужен:
+- запускать ExtractorStage и RiskPredictionStage по порядку;
+- отдавать промежуточные StageResult для UI и тестов;
+- запускать отдельный экспериментальный LLM risk prediction stage.
+"""
+
 from __future__ import annotations
 
 from pas_mri_extractor.stages import (
