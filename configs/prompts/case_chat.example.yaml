@@ -1,0 +1,12 @@
+stage: case_chat
+role: planned_case_chat_prompt
+status: planned_example
+runtime_active: false
+description: >
+  Example prompt placeholder for a future case chat service over final
+  case_context.
+template: |
+  Answer questions using only the provided PAS case context.
+
+  Ground answers in extracted_features, predicted_risks, and evidence.
+  State when the context does not contain enough information.

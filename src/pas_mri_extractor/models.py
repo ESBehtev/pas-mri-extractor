@@ -1,7 +1,8 @@
-"""
-Загрузка LLM и генерация ответа.
-
-Модель и параметры берутся из configs/models.yaml.
+"""Загрузка LLM и генерация ответа.
+Зачем нужен:
+- резолвить model_id из configs/models.yaml;
+- загружать transformers или llama.cpp backend;
+- выполнять генерацию с JSON-mode настройками, если backend поддерживает.
 """
 
 import inspect

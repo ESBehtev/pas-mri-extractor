@@ -1,24 +1,37 @@
+"""Streamlit-интерфейс исследовательского прототипа PAS MRI Extractor.
+Файл собирает пользовательский UI:
+- ввод МРТ-описания и выбор модели;
+- запуск extractor и rule-based оценки;
+- отображение LLM-прогноза рисков и экспорт итогового JSON.
+"""
+
 import streamlit as st
 
 from components import (
+    build_extracted_result_for_llm_risk,
     render_clinical_result,
     render_dual_comparison,
     render_json_export,
     render_report_sections,
+    render_risk_prediction_comparison,
+    stage_result_to_llm_risk_ui,
 )
 from config_studio import render_config_studio
 from examples import get_example_by_name, get_example_names
 from state import (
     clear_extraction_request,
+    get_last_llm_risk_output,
     get_last_outputs,
     init_session_state,
     request_extraction,
+    reset_llm_risk_state,
     save_extraction_result,
     set_running,
 )
 
 from pas_mri_extractor.pipeline import extract_features, extract_features_dual
 from pas_mri_extractor.pipeline import get_cached_model, unload_current_model
+from pas_mri_extractor.orchestrator import run_risk_prediction_experiment
 from pas_mri_extractor.models import get_available_models, get_default_model_name
 from pas_mri_extractor.config import config_overrides
 from pas_mri_extractor.scoring import clear_score_config_cache
@@ -27,6 +40,12 @@ from pas_mri_extractor.report_sections import split_report_sections
 
 def preload_model(model_name: str):
     return get_cached_model(model_name)
+
+
+def combined_json_download_key(status: str | None) -> str:
+    run_id = st.session_state.get("analysis_run_id", 0)
+    safe_status = status or "unknown"
+    return f"combined_json_download_{run_id}_{safe_status}"
 
 
 st.set_page_config(
@@ -54,6 +73,7 @@ with st.sidebar:
 
 
 result, dual_result, sections, last_diagnostic_mode = get_last_outputs()
+llm_risk_result = get_last_llm_risk_output()
 
 extract_tab, config_tab = st.tabs(["Извлечение", "Конфигурация"])
 
@@ -87,6 +107,15 @@ with extract_tab:
             "Диагностическое сравнение извлечения",
             value=False,
             help="Сравнить извлечение по полному отчёту, описанию и заключению.",
+        )
+
+        run_llm_risk_prediction = st.checkbox(
+            "Выполнять LLM-прогноз рисков",
+            value=True,
+            help=(
+                "Выполняет второй LLM-вызов для прогноза хирургических рисков "
+                "на основе исходного текста и извлечённого JSON."
+            ),
         )
 
     model_ready = False
@@ -145,6 +174,12 @@ with extract_tab:
         on_click=request_extraction,
     )
 
+    rendered_current_request = False
+    diagnostic_placeholder = st.empty()
+    result_placeholder = st.empty()
+    comparison_placeholder = st.empty()
+    export_placeholder = st.empty()
+
     if st.session_state.get("extract_requested"):
         if st.session_state.get("is_running"):
             clear_extraction_request()
@@ -162,6 +197,7 @@ with extract_tab:
 
         current_sections = split_report_sections(text)
         set_running(True)
+        reset_llm_risk_state()
 
         try:
             with st.spinner("Выполняется извлечение признаков..."):
@@ -181,15 +217,106 @@ with extract_tab:
                             model_name=model_name,
                         )
 
+            current_llm_risk_result = {
+                "stage_name": "LLMRiskPredictionStage",
+                "status": "running" if run_llm_risk_prediction else "skipped",
+                "llm_risk": None,
+                "errors": [],
+                "warnings": [],
+            }
             save_extraction_result(
                 result=current_result,
                 dual_result=current_dual_result,
                 sections=current_sections,
                 model_name=model_name,
                 diagnostic_mode=diagnostic_mode,
+                llm_risk_result=current_llm_risk_result,
             )
 
+            if diagnostic_mode and current_dual_result:
+                with diagnostic_placeholder.container():
+                    st.markdown("---")
+                    st.subheader("Сравнение: полный отчёт / описание / заключение")
+                    render_dual_comparison(current_dual_result)
+
+                    with st.expander(
+                        "Разбор структуры отчёта",
+                        expanded=False,
+                    ):
+                        render_report_sections(current_sections)
+
+            with result_placeholder.container():
+                st.markdown("---")
+                render_clinical_result(current_result, text)
+
+            with comparison_placeholder.container():
+                st.markdown("---")
+                render_risk_prediction_comparison(
+                    current_result,
+                    current_llm_risk_result,
+                )
+
+            with export_placeholder.container():
+                st.markdown("---")
+                render_json_export(
+                    st.session_state.get("combined_result_json") or current_result,
+                    download_key=combined_json_download_key(
+                        current_llm_risk_result.get("status"),
+                    ),
+                )
+
+            rendered_current_request = True
+
+            if run_llm_risk_prediction:
+                with st.spinner("Выполняется LLM-прогноз хирургических рисков..."):
+                    try:
+                        loaded_model = get_cached_model(model_name)
+                        extracted_result = build_extracted_result_for_llm_risk(
+                            current_result,
+                        )
+                        risk_stage_result = run_risk_prediction_experiment(
+                            text=text,
+                            extracted_result=extracted_result,
+                            model_id=model_name,
+                            loaded_model=loaded_model,
+                        )
+                        current_llm_risk_result = stage_result_to_llm_risk_ui(
+                            risk_stage_result,
+                        )
+                    except Exception as risk_error:
+                        current_llm_risk_result = {
+                            "stage_name": "LLMRiskPredictionStage",
+                            "status": "failed",
+                            "llm_risk": None,
+                            "errors": [str(risk_error)],
+                            "warnings": [],
+                        }
+
+                save_extraction_result(
+                    result=current_result,
+                    dual_result=current_dual_result,
+                    sections=current_sections,
+                    model_name=model_name,
+                    diagnostic_mode=diagnostic_mode,
+                    llm_risk_result=current_llm_risk_result,
+                )
+                with comparison_placeholder.container():
+                    st.markdown("---")
+                    render_risk_prediction_comparison(
+                        current_result,
+                        current_llm_risk_result,
+                    )
+                with export_placeholder.container():
+                    st.markdown("---")
+                    render_json_export(
+                        st.session_state.get("combined_result_json") or current_result,
+                        download_key=combined_json_download_key(
+                            current_llm_risk_result.get("status"),
+                        ),
+                    )
+
             result, dual_result, sections, last_diagnostic_mode = get_last_outputs()
+            llm_risk_result = get_last_llm_risk_output()
 
         except Exception as error:
             st.error(f"Ошибка: {error}")
@@ -200,7 +327,7 @@ with extract_tab:
             set_running(False)
             clear_extraction_request()
 
-    if last_diagnostic_mode and dual_result:
+    if not rendered_current_request and last_diagnostic_mode and dual_result:
         st.markdown("---")
         st.subheader("Сравнение: полный отчёт / описание / заключение")
         render_dual_comparison(dual_result)
@@ -211,13 +338,21 @@ with extract_tab:
         ):
             render_report_sections(sections)
 
-    if result:
+    if not rendered_current_request and result:
         st.markdown("---")
         render_clinical_result(result, st.session_state.get("report_text"))
 
         st.markdown("---")
-        render_json_export(result)
-    else:
+        render_risk_prediction_comparison(result, llm_risk_result)
+
+        st.markdown("---")
+        render_json_export(
+            st.session_state.get("combined_result_json") or result,
+            download_key=combined_json_download_key(
+                st.session_state.get("llm_risk_status"),
+            ),
+        )
+    elif not rendered_current_request:
         st.markdown("---")
         render_clinical_result(result, st.session_state.get("report_text"))
 

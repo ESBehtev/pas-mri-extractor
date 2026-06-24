@@ -1,0 +1,11 @@
+stage: clinical_summary
+role: planned_clinical_summary_prompt
+status: planned_example
+runtime_active: false
+description: >
+  Example prompt placeholder for a future clinical summary stage.
+template: |
+  Summarize the PAS case context for retrospective research review.
+
+  Use extracted findings, predicted risks, and evidence phrases.
+  Preserve uncertainty and do not add findings absent from the source context.

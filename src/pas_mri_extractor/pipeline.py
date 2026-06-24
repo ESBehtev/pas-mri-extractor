@@ -1,3 +1,10 @@
+"""Process-level pipeline и lifecycle модели для PAS MRI Extractor.
+Зачем нужен:
+- кэшировать один загруженный LLM runner/model на процесс;
+- запускать extractor с raw/debug artifacts для UI и CLI;
+- нормализовать результат через deterministic scoring.
+"""
+
 import gc
 import logging
 from threading import RLock

@@ -8,6 +8,100 @@
 `suspicion` хранит отдельный safety-блок для неопределенных формулировок
 вроде "нельзя исключить percreta" и не подменяет `invasion.type`.
 
+## Current Stage Architecture
+
+Текущий публичный Streamlit-запуск сохраняется:
+
+```bash
+PYTHONPATH=src streamlit run app/streamlit_app.py --server.port 8501
+```
+
+Параллельно добавлен минимальный синхронный stage-based слой без LangGraph,
+FastAPI и очередей:
+
+- `ExtractorStage`: тонкая обёртка над текущим extraction pipeline. Она отвечает
+  за структурированное извлечение PAS JSON из текста МРТ и не меняет prompt,
+  schema или поведение существующего extractor.
+- `RiskPredictionStage`: стадия расчёта score, `predicted_risks`,
+  `recommendation` и `computed_rationale` на основе уже извлечённого JSON.
+  Сейчас она использует существующую rule-based функцию
+  `scoring.normalize_mri_result()`, поэтому численные значения и readiness logic
+  остаются прежними.
+
+Программная точка входа:
+
+```python
+from pas_mri_extractor.orchestrator import run_case_pipeline
+
+stage_results = run_case_pipeline(text, model_id="qwen3_6_35b_a3b_gguf")
+```
+
+`PipelineContext` уже хранит `source_text`, optional `conclusion_text`,
+`extracted_result`, `predicted_risks`, `evidence` и `metadata`, чтобы следующими
+шагами можно было добавить более сложный prognosis слой без изменения
+extraction schema.
+
+Planned stages/services:
+
+- `ValidationStage`;
+- ML/calibrated prognosis model;
+- `ClinicalSummaryStage`;
+- `CaseChatService` поверх финального case context;
+- MRI/DICOM segmentation/classification pipeline.
+
+## Prompt Registry
+
+Активный extractor prompt по-прежнему хранится в `configs/prompt.yaml`.
+Это сохраняет совместимость существующего `build_prompt()` и не меняет
+поведение extraction.
+
+Для stage-based архитектуры добавлен prompt registry:
+
+- `extractor` резолвится в текущий активный `configs/prompt.yaml`;
+- `configs/prompts/extractor.yaml` является documented alias и не используется
+  runtime extraction;
+- `configs/prompts/risk_prediction.yaml` является experimental LLM risk
+  prediction prompt для терминальных экспериментов и не подключён к основному
+  `run_case_pipeline()`;
+- `configs/prompts/risk_prediction.example.yaml` оставлен как planned/example
+  prompt и не используется текущим rule-based `RiskPredictionStage`;
+- `configs/prompts/clinical_summary.example.yaml` является planned clinical
+  summary prompt;
+- `configs/prompts/case_chat.example.yaml` является planned case chat prompt.
+
+Рекомендуемая структура `configs/`:
+
+- `configs/prompts/`: stage prompt registry entries и future prompt configs;
+- `configs/prompt.yaml`: active extractor prompt, сохранён для backward
+  compatibility;
+- `configs/models.yaml`: model registry;
+- `configs/rules.yaml`: rule baseline config;
+- `configs/risk_score.yaml`: deterministic score/risk config;
+- `configs/benchmark_pas20.yaml`: PAS20 benchmark config;
+- `configs/eval_*.yaml`: YAML batch eval configs.
+
+В будущем разные стадии смогут использовать разные prompt configs и разные
+модели без изменения clinical schema.
+
+Terminal-only LLM risk prediction experiment:
+
+```python
+from pas_mri_extractor.orchestrator import run_risk_prediction_experiment
+from pas_mri_extractor.pipeline import get_cached_model
+
+loaded_model = get_cached_model("qwen3_6_35b_a3b_gguf")
+stage_result = run_risk_prediction_experiment(
+    text=mri_text,
+    extracted_result=extracted_json,
+    model_id="qwen3_6_35b_a3b_gguf",
+    loaded_model=loaded_model,
+)
+```
+
+Если `runner` или `loaded_model` передан явно, экспериментальная стадия не
+загружает GGUF повторно. Без них fallback использует process-level
+`get_cached_model()`.
+
 ## Установка
 
 ```bash
@@ -177,6 +271,19 @@ PYTHONPATH=src python scripts/evaluate_predictions.py \
   --run-llm \
   --model qwen3_6_35b_a3b_gguf \
   --limit 10
+```
+
+Benchmark experimental LLM risk prediction на размеченном PAS20 JSONL:
+
+```bash
+PYTHONPATH=src python scripts/evaluate_llm_risk.py \
+  --input data/evaluation/pas20.jsonl \
+  --text-input data/evaluation/dataset_sheet3.jsonl \
+  --join-key case_id \
+  --output outputs/llm_risk_eval_20.jsonl \
+  --summary-output outputs/llm_risk_eval_20_summary.json \
+  --model qwen3_6_35b_a3b_gguf \
+  --limit 20
 ```
 
 Результаты:
