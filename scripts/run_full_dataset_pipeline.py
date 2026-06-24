@@ -160,16 +160,30 @@ def extract_total_blood_loss_from_text(text: Any) -> int | None:
 def extract_actual_blood_loss(record: dict[str, Any]) -> dict[str, Any]:
     birth = parse_ml_value(record.get(BIRTH_BLOOD_LOSS_FIELD))
     operation = parse_ml_value(record.get(OPERATION_BLOOD_LOSS_FIELD))
+    total_from_text = extract_total_blood_loss_from_text(
+        record.get(INTERVENTION_TEXT_FIELD),
+    )
+
+    if total_from_text is not None:
+        value_for_metrics = total_from_text
+        source = "total_blood_loss_from_text"
+    elif operation is not None:
+        value_for_metrics = operation
+        source = "operation_blood_loss"
+    elif birth is not None:
+        value_for_metrics = birth
+        source = "birth_blood_loss"
+    else:
+        value_for_metrics = None
+        source = "unavailable"
+
     actual = {
         "birth_blood_loss_ml": birth,
         "operation_blood_loss_ml": operation,
-        "actual_total_blood_loss_ml": None,
-        "actual_total_blood_loss_from_text_ml": extract_total_blood_loss_from_text(
-            record.get(INTERVENTION_TEXT_FIELD),
-        ),
+        "total_blood_loss_from_text_ml": total_from_text,
+        "actual_blood_loss_for_metrics_ml": value_for_metrics,
+        "actual_blood_loss_source": source,
     }
-    if birth is not None and operation is not None:
-        actual["actual_total_blood_loss_ml"] = birth + operation
     return actual
 
 
@@ -356,7 +370,7 @@ def calculate_blood_loss_metrics(results: list[dict[str, Any]]) -> dict[str, Any
         if result.get("status") != "success":
             continue
         actual = (result.get("actual_blood_loss") or {}).get(
-            "actual_total_blood_loss_ml"
+            "actual_blood_loss_for_metrics_ml"
         )
         predicted = blood_loss_prediction(result)
         if actual is None or predicted is None:

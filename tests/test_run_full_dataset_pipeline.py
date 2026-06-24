@@ -94,7 +94,14 @@ class FullDatasetPipelineTest(unittest.TestCase):
         self.assertEqual(original, record)
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["llm_risk"], LLM_RISK)
-        self.assertEqual(result["actual_blood_loss"]["actual_total_blood_loss_ml"], 1400)
+        self.assertEqual(
+            result["actual_blood_loss"]["actual_blood_loss_for_metrics_ml"],
+            400,
+        )
+        self.assertEqual(
+            result["actual_blood_loss"]["actual_blood_loss_source"],
+            "operation_blood_loss",
+        )
         self.assertIn("rule_based_risk", result)
         self.assertNotIn("debug_artifacts", result)
 
@@ -127,7 +134,7 @@ class FullDatasetPipelineTest(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["errors"], ["extract failed"])
 
-    def test_extract_actual_blood_loss_sums_fields_and_reads_text_total(self) -> None:
+    def test_extract_actual_blood_loss_prefers_text_then_operation_then_birth(self) -> None:
         actual = extract_actual_blood_loss(
             {
                 "КровопотеряРоды": "1000.000000",
@@ -138,24 +145,41 @@ class FullDatasetPipelineTest(unittest.TestCase):
 
         self.assertEqual(actual["birth_blood_loss_ml"], 1000)
         self.assertEqual(actual["operation_blood_loss_ml"], 600)
-        self.assertEqual(actual["actual_total_blood_loss_ml"], 1600)
-        self.assertEqual(actual["actual_total_blood_loss_from_text_ml"], 1600)
+        self.assertEqual(actual["total_blood_loss_from_text_ml"], 1600)
+        self.assertEqual(actual["actual_blood_loss_for_metrics_ml"], 1600)
+        self.assertEqual(actual["actual_blood_loss_source"], "total_blood_loss_from_text")
+
+        operation_only = extract_actual_blood_loss(
+            {
+                "КровопотеряРоды": "1000.000000",
+                "КровопотеряОперация": "600.000000",
+            }
+        )
+        birth_only = extract_actual_blood_loss({"КровопотеряРоды": "1000.000000"})
+        unavailable = extract_actual_blood_loss({})
+
+        self.assertEqual(operation_only["actual_blood_loss_for_metrics_ml"], 600)
+        self.assertEqual(operation_only["actual_blood_loss_source"], "operation_blood_loss")
+        self.assertEqual(birth_only["actual_blood_loss_for_metrics_ml"], 1000)
+        self.assertEqual(birth_only["actual_blood_loss_source"], "birth_blood_loss")
+        self.assertIsNone(unavailable["actual_blood_loss_for_metrics_ml"])
+        self.assertEqual(unavailable["actual_blood_loss_source"], "unavailable")
 
     def test_blood_loss_metrics(self) -> None:
         results = [
             {
                 "status": "success",
-                "actual_blood_loss": {"actual_total_blood_loss_ml": 1000},
+                "actual_blood_loss": {"actual_blood_loss_for_metrics_ml": 1000},
                 "llm_risk": {"risk_assessment": {"estimated_blood_loss_ml": 1200}},
             },
             {
                 "status": "success",
-                "actual_blood_loss": {"actual_total_blood_loss_ml": 2000},
+                "actual_blood_loss": {"actual_blood_loss_for_metrics_ml": 2000},
                 "llm_risk": {"risk_assessment": {"estimated_blood_loss_ml": 2600}},
             },
             {
                 "status": "failed",
-                "actual_blood_loss": {"actual_total_blood_loss_ml": 1000},
+                "actual_blood_loss": {"actual_blood_loss_for_metrics_ml": 1000},
                 "llm_risk": {"risk_assessment": {"estimated_blood_loss_ml": 2000}},
             },
         ]
@@ -203,7 +227,7 @@ class FullDatasetPipelineTest(unittest.TestCase):
                 {
                     "case_id": "case_1",
                     "status": "success",
-                    "actual_blood_loss": {"actual_total_blood_loss_ml": 1000},
+                    "actual_blood_loss": {"actual_blood_loss_for_metrics_ml": 1000},
                     "llm_risk": {
                         "risk_assessment": {"estimated_blood_loss_ml": 1200}
                     },
