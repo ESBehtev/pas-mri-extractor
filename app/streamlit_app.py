@@ -245,7 +245,10 @@ with extract_tab:
 
             with export_placeholder.container():
                 st.markdown("---")
-                render_json_export(current_result)
+                render_json_export(
+                    st.session_state.get("combined_result_json") or current_result,
+                    extractor_only_result=current_result,
+                )
 
             rendered_current_request = True
 
@@ -288,6 +291,12 @@ with extract_tab:
                         current_result,
                         current_llm_risk_result,
                     )
+                with export_placeholder.container():
+                    st.markdown("---")
+                    render_json_export(
+                        st.session_state.get("combined_result_json") or current_result,
+                        extractor_only_result=current_result,
+                    )
 
             result, dual_result, sections, last_diagnostic_mode = get_last_outputs()
             llm_risk_result = get_last_llm_risk_output()
@@ -320,7 +329,10 @@ with extract_tab:
         render_risk_prediction_comparison(result, llm_risk_result)
 
         st.markdown("---")
-        render_json_export(result)
+        render_json_export(
+            st.session_state.get("combined_result_json") or result,
+            extractor_only_result=result,
+        )
     elif not rendered_current_request:
         st.markdown("---")
         render_clinical_result(result, st.session_state.get("report_text"))

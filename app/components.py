@@ -893,16 +893,23 @@ def render_risk_prediction_comparison(
     )
 
 
-def render_json_export(result: dict | None) -> None:
+def render_json_export(
+    result: dict | None,
+    extractor_only_result: dict | None = None,
+) -> None:
     if not result:
         st.info("Нет результата для отображения.")
         return
 
-    with st.expander("Структурированный JSON extractor", expanded=False):
+    with st.expander("Итоговый JSON результата", expanded=False):
         st.json(result)
         st.download_button(
             label="Скачать JSON",
             data=json.dumps(result, ensure_ascii=False, indent=2),
-            file_name="pas_mri_extraction.json",
+            file_name="pas_mri_result_combined.json",
             mime="application/json",
         )
+
+    if extractor_only_result:
+        with st.expander("Extractor-only JSON", expanded=False):
+            st.json(extractor_only_result)

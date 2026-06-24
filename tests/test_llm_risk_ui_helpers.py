@@ -1,6 +1,7 @@
 import unittest
 
 from app.llm_risk_helpers import (
+    build_combined_result_json,
     build_extracted_result_for_llm_risk,
     format_ml,
     format_percent,
@@ -182,6 +183,7 @@ class LLMRiskUIHelpersTest(unittest.TestCase):
             "llm_risk_status": "success",
             "llm_risk_errors": ["old"],
             "llm_risk_warnings": ["old"],
+            "combined_result_json": {"llm_risk": {}},
         }
 
         reset_llm_risk_state_values(state)
@@ -191,6 +193,107 @@ class LLMRiskUIHelpersTest(unittest.TestCase):
         self.assertEqual(state["llm_risk_status"], "skipped")
         self.assertEqual(state["llm_risk_errors"], [])
         self.assertEqual(state["llm_risk_warnings"], [])
+        self.assertIsNone(state["combined_result_json"])
+
+    def test_build_combined_result_json_success(self) -> None:
+        extraction_result = {
+            "schema_version": "1.0",
+            "case_info": {"gestational_week": 34},
+            "extracted_features": {"invasion": {"type": "increta"}},
+            "suspicion": {"highest_suspected_extent": "increta"},
+            "evidence": {"positive_findings": ["lacunae"]},
+            "score": {"clinical_score": 7},
+            "predicted_risks": {"vascular_intervention_percent": 50},
+            "recommendation": {"readiness_level": "2"},
+            "computed_rationale": "rule rationale",
+        }
+        rule_based_risk = {
+            "score": {"clinical_score": 7},
+            "predicted_risks": {"vascular_intervention_percent": 50},
+            "recommendation": {"readiness_level": "2"},
+            "computed_rationale": "rule rationale",
+        }
+        llm_risk = {
+            "risk_assessment": {"estimated_blood_loss_ml": 1200},
+            "readiness": {"level": "2"},
+            "operative_risk_summary": {"text": "operative"},
+            "clinical_summary": {"text": "clinical"},
+            "confidence": "medium",
+        }
+
+        combined = build_combined_result_json(
+            extraction_result=extraction_result,
+            rule_based_risk=rule_based_risk,
+            llm_risk=llm_risk,
+            llm_risk_status="success",
+        )
+
+        self.assertEqual(combined["schema_version"], "1.0")
+        self.assertEqual(combined["score"], {"clinical_score": 7})
+        self.assertEqual(combined["rule_based_risk"], rule_based_risk)
+        self.assertEqual(combined["llm_risk"], llm_risk)
+        self.assertTrue(combined["metadata"]["has_llm_risk"])
+        self.assertEqual(combined["metadata"]["llm_risk_status"], "success")
+
+    def test_build_combined_result_json_disabled(self) -> None:
+        combined = build_combined_result_json(
+            extraction_result={"schema_version": "1.0"},
+            rule_based_risk={"score": {}},
+            llm_risk=None,
+            llm_risk_status="disabled",
+        )
+
+        self.assertIsNone(combined["llm_risk"])
+        self.assertFalse(combined["metadata"]["has_llm_risk"])
+        self.assertEqual(combined["metadata"]["llm_risk_status"], "disabled")
+
+    def test_build_combined_result_json_failed_includes_errors(self) -> None:
+        combined = build_combined_result_json(
+            extraction_result={"schema_version": "1.0"},
+            rule_based_risk={"score": {}},
+            llm_risk=None,
+            llm_risk_status="failed",
+            llm_risk_errors=["boom"],
+            llm_risk_warnings=["check input"],
+        )
+
+        self.assertIsNone(combined["llm_risk"])
+        self.assertFalse(combined["metadata"]["has_llm_risk"])
+        self.assertEqual(combined["metadata"]["llm_risk_status"], "failed")
+        self.assertEqual(combined["metadata"]["llm_risk_errors"], ["boom"])
+        self.assertEqual(
+            combined["metadata"]["llm_risk_warnings"],
+            ["check input"],
+        )
+
+    def test_build_combined_result_json_does_not_mutate_or_include_debug(self) -> None:
+        extraction_result = {
+            "schema_version": "1.0",
+            "score": {"clinical_score": 7},
+            "debug_artifacts": {"prompt": "hidden"},
+        }
+        rule_based_risk = {
+            "score": {"clinical_score": 7},
+            "prompt": "hidden",
+        }
+        llm_risk = {
+            "risk_assessment": {"estimated_blood_loss_ml": 1200},
+            "raw_output": "hidden",
+        }
+
+        combined = build_combined_result_json(
+            extraction_result=extraction_result,
+            rule_based_risk=rule_based_risk,
+            llm_risk=llm_risk,
+            llm_risk_status="success",
+        )
+
+        self.assertIn("debug_artifacts", extraction_result)
+        self.assertIn("prompt", rule_based_risk)
+        self.assertIn("raw_output", llm_risk)
+        self.assertNotIn("debug_artifacts", combined)
+        self.assertNotIn("prompt", combined["rule_based_risk"])
+        self.assertNotIn("raw_output", combined["llm_risk"])
 
 
 if __name__ == "__main__":

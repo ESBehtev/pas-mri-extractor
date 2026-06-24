@@ -1,7 +1,14 @@
+import copy
 from typing import Any
 
 
 MISSING_DISPLAY = "—"
+DEBUG_ARTIFACT_KEYS = {
+    "debug_artifacts",
+    "prompt",
+    "raw_output",
+    "parsed",
+}
 
 
 def build_extracted_result_for_llm_risk(result: dict | None) -> dict | None:
@@ -47,6 +54,66 @@ def reset_llm_risk_state_values(state: Any) -> None:
     state["llm_risk_status"] = "skipped"
     state["llm_risk_errors"] = []
     state["llm_risk_warnings"] = []
+    state["combined_result_json"] = None
+
+
+def strip_debug_artifacts(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: strip_debug_artifacts(item)
+            for key, item in value.items()
+            if key not in DEBUG_ARTIFACT_KEYS
+        }
+    if isinstance(value, list):
+        return [strip_debug_artifacts(item) for item in value]
+    return value
+
+
+def build_rule_based_risk_json(extraction_result: dict | None) -> dict[str, Any]:
+    extraction_result = extraction_result or {}
+    return {
+        "score": copy.deepcopy(extraction_result.get("score") or {}),
+        "predicted_risks": copy.deepcopy(
+            extraction_result.get("predicted_risks") or {}
+        ),
+        "recommendation": copy.deepcopy(
+            extraction_result.get("recommendation") or {}
+        ),
+        "computed_rationale": copy.deepcopy(
+            extraction_result.get("computed_rationale")
+        ),
+    }
+
+
+def build_combined_result_json(
+    extraction_result: dict,
+    rule_based_risk: dict | None,
+    llm_risk: dict | None,
+    llm_risk_status: str,
+    llm_risk_errors: list[str] | None = None,
+    llm_risk_warnings: list[str] | None = None,
+) -> dict:
+    combined = copy.deepcopy(extraction_result)
+    clean_rule_based_risk = strip_debug_artifacts(
+        copy.deepcopy(rule_based_risk) if rule_based_risk is not None else {}
+    )
+    clean_llm_risk = strip_debug_artifacts(copy.deepcopy(llm_risk))
+    errors = list(llm_risk_errors or [])
+    warnings = list(llm_risk_warnings or [])
+
+    has_llm_risk = llm_risk_status == "success" and clean_llm_risk is not None
+    metadata = {
+        "has_llm_risk": has_llm_risk,
+        "llm_risk_status": llm_risk_status,
+    }
+    if llm_risk_status == "failed":
+        metadata["llm_risk_errors"] = errors
+        metadata["llm_risk_warnings"] = warnings
+
+    combined["rule_based_risk"] = clean_rule_based_risk
+    combined["llm_risk"] = clean_llm_risk if has_llm_risk else None
+    combined["metadata"] = metadata
+    return strip_debug_artifacts(combined)
 
 
 def risk_level_from_percent(value: int | float | str | None) -> str:

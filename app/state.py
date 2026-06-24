@@ -1,9 +1,17 @@
 import streamlit as st
 
 try:
-    from llm_risk_helpers import reset_llm_risk_state_values
+    from llm_risk_helpers import (
+        build_combined_result_json,
+        build_rule_based_risk_json,
+        reset_llm_risk_state_values,
+    )
 except ModuleNotFoundError:
-    from app.llm_risk_helpers import reset_llm_risk_state_values
+    from app.llm_risk_helpers import (
+        build_combined_result_json,
+        build_rule_based_risk_json,
+        reset_llm_risk_state_values,
+    )
 
 
 SESSION_DEFAULTS = {
@@ -19,6 +27,7 @@ SESSION_DEFAULTS = {
     "llm_risk_status": "skipped",
     "llm_risk_errors": [],
     "llm_risk_warnings": [],
+    "combined_result_json": None,
     "last_model_name": None,
     "last_diagnostic_mode": False,
     "report_text": "",
@@ -48,12 +57,7 @@ def build_rule_based_result(result: dict | None) -> dict | None:
     if not result:
         return None
 
-    return {
-        "score": result.get("score") or {},
-        "predicted_risks": result.get("predicted_risks") or {},
-        "recommendation": result.get("recommendation") or {},
-        "computed_rationale": result.get("computed_rationale"),
-    }
+    return build_rule_based_risk_json(result)
 
 
 def reset_llm_risk_state(session_state: object | None = None) -> None:
@@ -70,23 +74,33 @@ def save_extraction_result(
     diagnostic_mode: bool,
     llm_risk_result: dict | None = None,
 ) -> None:
+    rule_based_result = build_rule_based_result(result)
+    llm_status = llm_risk_result.get("status") if llm_risk_result else "skipped"
+    if llm_status == "skipped":
+        combined_llm_status = "disabled"
+    else:
+        combined_llm_status = llm_status
+    llm_result = llm_risk_result.get("llm_risk") if llm_risk_result else None
+    llm_errors = llm_risk_result.get("errors") if llm_risk_result else []
+    llm_warnings = llm_risk_result.get("warnings") if llm_risk_result else []
+
     st.session_state["model_loaded"] = True
     st.session_state["last_result"] = result
     st.session_state["last_dual_result"] = dual_result
     st.session_state["last_llm_risk_result"] = llm_risk_result
     st.session_state["extraction_result"] = result
-    st.session_state["rule_based_result"] = build_rule_based_result(result)
-    st.session_state["llm_risk_result"] = (
-        llm_risk_result.get("llm_risk") if llm_risk_result else None
-    )
-    st.session_state["llm_risk_status"] = (
-        llm_risk_result.get("status") if llm_risk_result else "skipped"
-    )
-    st.session_state["llm_risk_errors"] = (
-        llm_risk_result.get("errors") if llm_risk_result else []
-    )
-    st.session_state["llm_risk_warnings"] = (
-        llm_risk_result.get("warnings") if llm_risk_result else []
+    st.session_state["rule_based_result"] = rule_based_result
+    st.session_state["llm_risk_result"] = llm_result
+    st.session_state["llm_risk_status"] = llm_status
+    st.session_state["llm_risk_errors"] = llm_errors
+    st.session_state["llm_risk_warnings"] = llm_warnings
+    st.session_state["combined_result_json"] = build_combined_result_json(
+        extraction_result=result,
+        rule_based_risk=rule_based_result,
+        llm_risk=llm_result,
+        llm_risk_status=combined_llm_status,
+        llm_risk_errors=llm_errors,
+        llm_risk_warnings=llm_warnings,
     )
     st.session_state["last_sections"] = sections
     st.session_state["last_model_name"] = model_name
