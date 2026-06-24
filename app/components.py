@@ -793,27 +793,32 @@ def render_rule_based_prediction(rule_based_result: dict | None) -> None:
         risk_rows_from_prediction(prediction, "rule"),
     )
 
-    if prediction.get("readiness_rationale"):
-        readiness_box(
-            prediction.get("readiness_level"),
-            prediction.get("readiness_rationale"),
-        )
-
     score_reasons = as_list(prediction.get("score_reasons"))
-    if score_reasons:
-        with st.expander("Причины оценки", expanded=False):
+    has_rule_details = (
+        score_reasons
+        or prediction.get("readiness_rationale")
+        or prediction.get("risk_summary_text")
+        or prediction.get("computed_rationale")
+    )
+    if has_rule_details:
+        with st.expander("Подробное обоснование rule-based", expanded=False):
+            if prediction.get("readiness_rationale"):
+                readiness_box(
+                    prediction.get("readiness_level"),
+                    prediction.get("readiness_rationale"),
+                )
+            if prediction.get("risk_summary_text"):
+                st.markdown("**Сводка rule-based риска**")
+                st.write(prediction["risk_summary_text"])
+            if prediction.get("computed_rationale"):
+                st.markdown("**Расчётное обоснование**")
+                st.write(prediction["computed_rationale"])
+            if score_reasons:
+                st.markdown("**Причины оценки**")
             for reason in score_reasons:
                 finding_box(reason, "#64748b")
 
-    if prediction.get("risk_summary_text"):
-        with st.expander("Сводка rule-based риска", expanded=False):
-            st.write(prediction["risk_summary_text"])
-
-    if prediction.get("computed_rationale"):
-        with st.expander("Расчётное обоснование", expanded=False):
-            st.write(prediction["computed_rationale"])
-
-    with st.expander("Raw rule-based JSON", expanded=False):
+    with st.expander("Raw rule-based risk JSON", expanded=False):
         st.json(prediction.get("raw"))
 
 
@@ -824,6 +829,8 @@ def render_llm_prediction(stage_result: dict | None) -> None:
     if not prediction.get("available"):
         if prediction.get("status") == "failed":
             st.error(prediction.get("message"))
+        elif prediction.get("status") == "running":
+            st.info(prediction.get("message"))
         else:
             st.info(prediction.get("message"))
 
@@ -851,14 +858,14 @@ def render_llm_prediction(stage_result: dict | None) -> None:
     st.write(ru(prediction.get("confidence")))
 
     if prediction.get("operative_risk_summary"):
-        with st.expander("Операционный риск", expanded=False):
+        with st.expander("Операционный риск LLM", expanded=False):
             st.write(prediction["operative_risk_summary"])
 
     if prediction.get("clinical_summary"):
-        with st.expander("Клиническое резюме", expanded=False):
+        with st.expander("Клиническое резюме LLM", expanded=False):
             st.write(prediction["clinical_summary"])
 
-    with st.expander("Raw LLM JSON", expanded=False):
+    with st.expander("Raw LLM risk JSON", expanded=False):
         st.json(prediction.get("raw"))
 
 
@@ -891,7 +898,7 @@ def render_json_export(result: dict | None) -> None:
         st.info("Нет результата для отображения.")
         return
 
-    with st.expander("Структурированный JSON", expanded=False):
+    with st.expander("Структурированный JSON extractor", expanded=False):
         st.json(result)
         st.download_button(
             label="Скачать JSON",

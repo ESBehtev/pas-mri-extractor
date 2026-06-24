@@ -41,6 +41,14 @@ def stage_result_to_llm_risk_ui(stage_result: Any) -> dict | None:
     }
 
 
+def reset_llm_risk_state_values(state: Any) -> None:
+    state["last_llm_risk_result"] = None
+    state["llm_risk_result"] = None
+    state["llm_risk_status"] = "skipped"
+    state["llm_risk_errors"] = []
+    state["llm_risk_warnings"] = []
+
+
 def risk_level_from_percent(value: int | float | str | None) -> str:
     numeric_value = to_number(value)
     if numeric_value is None:
@@ -100,6 +108,12 @@ def normalize_rule_based_risk(rule_based_result: dict | None) -> dict[str, Any]:
     predicted_risks = rule_based_result.get("predicted_risks") or {}
     recommendation = rule_based_result.get("recommendation") or {}
     score = rule_based_result.get("score") or {}
+    raw_rule_based = {
+        "score": score,
+        "predicted_risks": predicted_risks,
+        "recommendation": recommendation,
+        "computed_rationale": rule_based_result.get("computed_rationale"),
+    }
 
     return {
         "available": bool(predicted_risks or recommendation or score),
@@ -123,7 +137,7 @@ def normalize_rule_based_risk(rule_based_result: dict | None) -> dict[str, Any]:
         "score_reasons": score.get("score_reasons"),
         "risk_summary_text": predicted_risks.get("risk_summary_text"),
         "computed_rationale": rule_based_result.get("computed_rationale"),
-        "raw": rule_based_result,
+        "raw": raw_rule_based,
     }
 
 
@@ -140,12 +154,17 @@ def normalize_llm_risk(stage_result: dict | None) -> dict[str, Any]:
 
     status = stage_result.get("status")
     if status != "success":
+        if status == "skipped":
+            message = "LLM-прогноз рисков отключён"
+        elif status == "running":
+            message = "Выполняется LLM-прогноз хирургических рисков..."
+        else:
+            message = "LLM-прогноз рисков не выполнен"
+
         return {
             "available": False,
             "status": status,
-            "message": "LLM-прогноз рисков отключён"
-            if status == "skipped"
-            else "LLM-прогноз рисков не выполнен",
+            "message": message,
             "errors": stage_result.get("errors") or [],
             "warnings": stage_result.get("warnings") or [],
             "raw": stage_result.get("llm_risk"),

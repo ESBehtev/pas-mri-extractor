@@ -7,6 +7,7 @@ from app.llm_risk_helpers import (
     normalize_llm_risk,
     normalize_rule_based_risk,
     risk_level_from_percent,
+    reset_llm_risk_state_values,
     stage_result_to_llm_risk_ui,
 )
 from pas_mri_extractor.stages import StageResult, StageStatus
@@ -85,6 +86,10 @@ class LLMRiskUIHelpersTest(unittest.TestCase):
 
     def test_normalize_rule_based_risk(self) -> None:
         result = {
+            "schema_version": "1.0",
+            "case_info": {"gestational_week": 34},
+            "extracted_features": {"invasion": {"type": "increta"}},
+            "evidence": {"positive_findings": ["lacunae"]},
             "predicted_risks": {
                 "massive_blood_loss_over_1500_ml_percent": 70,
                 "estimated_blood_loss_ml_range": "1500–3000 мл",
@@ -108,6 +113,13 @@ class LLMRiskUIHelpersTest(unittest.TestCase):
         self.assertEqual(normalized["estimated_blood_loss"], "1500–3000 мл")
         self.assertIsNone(normalized["hysterectomy_risk"])
         self.assertEqual(normalized["readiness_level"], "3")
+        self.assertEqual(
+            set(normalized["raw"]),
+            {"score", "predicted_risks", "recommendation", "computed_rationale"},
+        )
+        self.assertNotIn("schema_version", normalized["raw"])
+        self.assertNotIn("extracted_features", normalized["raw"])
+        self.assertNotIn("evidence", normalized["raw"])
 
     def test_normalize_llm_risk_success_and_skipped(self) -> None:
         payload = {
@@ -145,6 +157,40 @@ class LLMRiskUIHelpersTest(unittest.TestCase):
         self.assertEqual(normalized["confidence"], "medium")
         self.assertFalse(skipped["available"])
         self.assertEqual(skipped["status"], "skipped")
+
+    def test_normalize_llm_risk_running_and_failed(self) -> None:
+        running = normalize_llm_risk({"status": "running"})
+        failed = normalize_llm_risk(
+            {
+                "status": "failed",
+                "errors": ["boom"],
+                "warnings": ["check input"],
+            }
+        )
+
+        self.assertFalse(running["available"])
+        self.assertEqual(running["status"], "running")
+        self.assertIn("Выполняется", running["message"])
+        self.assertFalse(failed["available"])
+        self.assertEqual(failed["errors"], ["boom"])
+        self.assertEqual(failed["warnings"], ["check input"])
+
+    def test_reset_llm_risk_state_clears_previous_result(self) -> None:
+        state = {
+            "last_llm_risk_result": {"status": "success"},
+            "llm_risk_result": {"risk_assessment": {}},
+            "llm_risk_status": "success",
+            "llm_risk_errors": ["old"],
+            "llm_risk_warnings": ["old"],
+        }
+
+        reset_llm_risk_state_values(state)
+
+        self.assertIsNone(state["last_llm_risk_result"])
+        self.assertIsNone(state["llm_risk_result"])
+        self.assertEqual(state["llm_risk_status"], "skipped")
+        self.assertEqual(state["llm_risk_errors"], [])
+        self.assertEqual(state["llm_risk_warnings"], [])
 
 
 if __name__ == "__main__":

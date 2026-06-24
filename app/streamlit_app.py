@@ -17,6 +17,7 @@ from state import (
     get_last_outputs,
     init_session_state,
     request_extraction,
+    reset_llm_risk_state,
     save_extraction_result,
     set_running,
 )
@@ -160,6 +161,12 @@ with extract_tab:
         on_click=request_extraction,
     )
 
+    rendered_current_request = False
+    diagnostic_placeholder = st.empty()
+    result_placeholder = st.empty()
+    comparison_placeholder = st.empty()
+    export_placeholder = st.empty()
+
     if st.session_state.get("extract_requested"):
         if st.session_state.get("is_running"):
             clear_extraction_request()
@@ -177,6 +184,7 @@ with extract_tab:
 
         current_sections = split_report_sections(text)
         set_running(True)
+        reset_llm_risk_state()
 
         try:
             with st.spinner("Выполняется извлечение признаков..."):
@@ -198,11 +206,49 @@ with extract_tab:
 
             current_llm_risk_result = {
                 "stage_name": "LLMRiskPredictionStage",
-                "status": "skipped",
+                "status": "running" if run_llm_risk_prediction else "skipped",
                 "llm_risk": None,
                 "errors": [],
                 "warnings": [],
             }
+            save_extraction_result(
+                result=current_result,
+                dual_result=current_dual_result,
+                sections=current_sections,
+                model_name=model_name,
+                diagnostic_mode=diagnostic_mode,
+                llm_risk_result=current_llm_risk_result,
+            )
+
+            if diagnostic_mode and current_dual_result:
+                with diagnostic_placeholder.container():
+                    st.markdown("---")
+                    st.subheader("Сравнение: полный отчёт / описание / заключение")
+                    render_dual_comparison(current_dual_result)
+
+                    with st.expander(
+                        "Разбор структуры отчёта",
+                        expanded=False,
+                    ):
+                        render_report_sections(current_sections)
+
+            with result_placeholder.container():
+                st.markdown("---")
+                render_clinical_result(current_result, text)
+
+            with comparison_placeholder.container():
+                st.markdown("---")
+                render_risk_prediction_comparison(
+                    current_result,
+                    current_llm_risk_result,
+                )
+
+            with export_placeholder.container():
+                st.markdown("---")
+                render_json_export(current_result)
+
+            rendered_current_request = True
+
             if run_llm_risk_prediction:
                 with st.spinner("Выполняется LLM-прогноз хирургических рисков..."):
                     try:
@@ -228,14 +274,20 @@ with extract_tab:
                             "warnings": [],
                         }
 
-            save_extraction_result(
-                result=current_result,
-                dual_result=current_dual_result,
-                sections=current_sections,
-                model_name=model_name,
-                diagnostic_mode=diagnostic_mode,
-                llm_risk_result=current_llm_risk_result,
-            )
+                save_extraction_result(
+                    result=current_result,
+                    dual_result=current_dual_result,
+                    sections=current_sections,
+                    model_name=model_name,
+                    diagnostic_mode=diagnostic_mode,
+                    llm_risk_result=current_llm_risk_result,
+                )
+                with comparison_placeholder.container():
+                    st.markdown("---")
+                    render_risk_prediction_comparison(
+                        current_result,
+                        current_llm_risk_result,
+                    )
 
             result, dual_result, sections, last_diagnostic_mode = get_last_outputs()
             llm_risk_result = get_last_llm_risk_output()
@@ -249,7 +301,7 @@ with extract_tab:
             set_running(False)
             clear_extraction_request()
 
-    if last_diagnostic_mode and dual_result:
+    if not rendered_current_request and last_diagnostic_mode and dual_result:
         st.markdown("---")
         st.subheader("Сравнение: полный отчёт / описание / заключение")
         render_dual_comparison(dual_result)
@@ -260,7 +312,7 @@ with extract_tab:
         ):
             render_report_sections(sections)
 
-    if result:
+    if not rendered_current_request and result:
         st.markdown("---")
         render_clinical_result(result, st.session_state.get("report_text"))
 
@@ -269,7 +321,7 @@ with extract_tab:
 
         st.markdown("---")
         render_json_export(result)
-    else:
+    elif not rendered_current_request:
         st.markdown("---")
         render_clinical_result(result, st.session_state.get("report_text"))
 
