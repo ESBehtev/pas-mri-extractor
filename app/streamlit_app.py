@@ -1,15 +1,19 @@
 import streamlit as st
 
 from components import (
+    build_extracted_result_for_llm_risk,
     render_clinical_result,
     render_dual_comparison,
     render_json_export,
+    render_llm_risk_prediction,
     render_report_sections,
+    stage_result_to_llm_risk_ui,
 )
 from config_studio import render_config_studio
 from examples import get_example_by_name, get_example_names
 from state import (
     clear_extraction_request,
+    get_last_llm_risk_output,
     get_last_outputs,
     init_session_state,
     request_extraction,
@@ -19,6 +23,7 @@ from state import (
 
 from pas_mri_extractor.pipeline import extract_features, extract_features_dual
 from pas_mri_extractor.pipeline import get_cached_model, unload_current_model
+from pas_mri_extractor.orchestrator import run_risk_prediction_experiment
 from pas_mri_extractor.models import get_available_models, get_default_model_name
 from pas_mri_extractor.config import config_overrides
 from pas_mri_extractor.scoring import clear_score_config_cache
@@ -54,6 +59,7 @@ with st.sidebar:
 
 
 result, dual_result, sections, last_diagnostic_mode = get_last_outputs()
+llm_risk_result = get_last_llm_risk_output()
 
 extract_tab, config_tab = st.tabs(["Извлечение", "Конфигурация"])
 
@@ -87,6 +93,15 @@ with extract_tab:
             "Диагностическое сравнение извлечения",
             value=False,
             help="Сравнить извлечение по полному отчёту, описанию и заключению.",
+        )
+
+        run_llm_risk_prediction = st.checkbox(
+            "Выполнять LLM-прогноз рисков",
+            value=True,
+            help=(
+                "Выполняет второй LLM-вызов для прогноза хирургических рисков "
+                "на основе исходного текста и извлечённого JSON."
+            ),
         )
 
     model_ready = False
@@ -181,15 +196,43 @@ with extract_tab:
                             model_name=model_name,
                         )
 
+            current_llm_risk_result = None
+            if run_llm_risk_prediction:
+                with st.spinner("Выполняется LLM-прогноз хирургических рисков..."):
+                    try:
+                        loaded_model = get_cached_model(model_name)
+                        extracted_result = build_extracted_result_for_llm_risk(
+                            current_result,
+                        )
+                        risk_stage_result = run_risk_prediction_experiment(
+                            text=text,
+                            extracted_result=extracted_result,
+                            model_id=model_name,
+                            loaded_model=loaded_model,
+                        )
+                        current_llm_risk_result = stage_result_to_llm_risk_ui(
+                            risk_stage_result,
+                        )
+                    except Exception as risk_error:
+                        current_llm_risk_result = {
+                            "stage_name": "LLMRiskPredictionStage",
+                            "status": "failed",
+                            "llm_risk": None,
+                            "errors": [str(risk_error)],
+                            "warnings": [],
+                        }
+
             save_extraction_result(
                 result=current_result,
                 dual_result=current_dual_result,
                 sections=current_sections,
                 model_name=model_name,
                 diagnostic_mode=diagnostic_mode,
+                llm_risk_result=current_llm_risk_result,
             )
 
             result, dual_result, sections, last_diagnostic_mode = get_last_outputs()
+            llm_risk_result = get_last_llm_risk_output()
 
         except Exception as error:
             st.error(f"Ошибка: {error}")
@@ -214,6 +257,10 @@ with extract_tab:
     if result:
         st.markdown("---")
         render_clinical_result(result, st.session_state.get("report_text"))
+
+        if llm_risk_result:
+            st.markdown("---")
+            render_llm_risk_prediction(llm_risk_result)
 
         st.markdown("---")
         render_json_export(result)

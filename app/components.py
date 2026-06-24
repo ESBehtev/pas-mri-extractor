@@ -6,6 +6,17 @@ from typing import Any
 import streamlit as st
 
 try:
+    from llm_risk_helpers import (
+        build_extracted_result_for_llm_risk,
+        stage_result_to_llm_risk_ui,
+    )
+except ModuleNotFoundError:
+    from app.llm_risk_helpers import (
+        build_extracted_result_for_llm_risk,
+        stage_result_to_llm_risk_ui,
+    )
+
+try:
     from provenance import build_report_highlighting
 except ModuleNotFoundError:
     from app.provenance import build_report_highlighting
@@ -44,6 +55,12 @@ def ru(value: Any) -> str:
 
 def ru_upper(value: Any) -> str:
     return ru(value).upper()
+
+
+def percent_value(value: Any) -> str:
+    if value is None:
+        return "нет данных"
+    return f"{value}%"
 
 
 def as_list(value: Any) -> list[str]:
@@ -760,6 +777,98 @@ def render_clinical_result(result: dict | None, report_text: str | None = None) 
     if computed_rationale:
         st.subheader("Расчётное обоснование")
         st.write(computed_rationale)
+
+
+def render_llm_risk_prediction(stage_result: dict | None) -> None:
+    if not stage_result:
+        return
+
+    st.subheader("LLM-прогноз хирургических рисков")
+
+    status = stage_result.get("status")
+    warnings = stage_result.get("warnings") or []
+    errors = stage_result.get("errors") or []
+
+    if status == "success":
+        st.success("LLM-прогноз рисков выполнен")
+    elif status == "failed":
+        st.error("LLM-прогноз рисков не выполнен")
+    else:
+        st.warning(f"Статус LLM-прогноза: {ru(status)}")
+
+    if warnings or errors:
+        with st.expander("Ошибки и предупреждения LLM-прогноза", expanded=False):
+            for error in errors:
+                st.error(error)
+            for warning in warnings:
+                st.warning(warning)
+
+    if status != "success":
+        return
+
+    llm_risk = stage_result.get("llm_risk") or {}
+    risk_assessment = llm_risk.get("risk_assessment") or {}
+    readiness = llm_risk.get("readiness") or {}
+    operative_summary = llm_risk.get("operative_risk_summary") or {}
+    clinical_summary = llm_risk.get("clinical_summary") or {}
+
+    st.markdown("#### Основные числовые риски")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric(
+            "Кровопотеря >1500 мл",
+            percent_value(risk_assessment.get("massive_blood_loss_risk_percent")),
+        )
+    with col2:
+        st.metric(
+            "Оценка кровопотери",
+            ru(risk_assessment.get("estimated_blood_loss_ml")),
+        )
+    with col3:
+        st.metric(
+            "Диапазон кровопотери",
+            ru(risk_assessment.get("estimated_blood_loss_range")),
+        )
+    with col4:
+        st.metric(
+            "Сосудистое вмешательство",
+            percent_value(risk_assessment.get("vascular_intervention_risk_percent")),
+        )
+
+    col5, col6, col7 = st.columns(3)
+    with col5:
+        st.metric(
+            "Вовлечение мочевого пузыря",
+            percent_value(risk_assessment.get("bladder_involvement_risk_percent")),
+        )
+    with col6:
+        st.metric(
+            "Гистерэктомия",
+            percent_value(risk_assessment.get("hysterectomy_risk_percent")),
+        )
+    with col7:
+        st.metric(
+            "Трансфузия",
+            percent_value(risk_assessment.get("transfusion_risk_percent")),
+        )
+
+    st.markdown("#### Готовность")
+    readiness_box(readiness.get("level"), readiness.get("rationale"))
+
+    st.markdown("#### Резюме")
+    summary_col1, summary_col2 = st.columns(2)
+    with summary_col1:
+        st.markdown("**Операционный риск**")
+        st.write(operative_summary.get("text") or "Нет данных")
+    with summary_col2:
+        st.markdown("**Клиническое резюме**")
+        st.write(clinical_summary.get("text") or "Нет данных")
+
+    st.markdown("#### Уверенность")
+    st.write(ru(llm_risk.get("confidence")))
+
+    with st.expander("LLM risk JSON", expanded=False):
+        st.json(llm_risk)
 
 
 def render_json_export(result: dict | None) -> None:

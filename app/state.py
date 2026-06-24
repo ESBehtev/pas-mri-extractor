@@ -7,6 +7,7 @@ SESSION_DEFAULTS = {
     "last_result": None,
     "last_dual_result": None,
     "last_sections": None,
+    "last_llm_risk_result": None,
     "last_model_name": None,
     "last_diagnostic_mode": False,
     "report_text": "",
@@ -39,10 +40,12 @@ def save_extraction_result(
     sections: object,
     model_name: str,
     diagnostic_mode: bool,
+    llm_risk_result: dict | None = None,
 ) -> None:
     st.session_state["model_loaded"] = True
     st.session_state["last_result"] = result
     st.session_state["last_dual_result"] = dual_result
+    st.session_state["last_llm_risk_result"] = llm_risk_result
     st.session_state["last_sections"] = sections
     st.session_state["last_model_name"] = model_name
     st.session_state["last_diagnostic_mode"] = diagnostic_mode
@@ -55,3 +58,7 @@ def get_last_outputs() -> tuple[dict | None, dict | None, object | None, bool]:
         st.session_state.get("last_sections"),
         st.session_state.get("last_diagnostic_mode", False),
     )
+
+
+def get_last_llm_risk_output() -> dict | None:
+    return st.session_state.get("last_llm_risk_result")
