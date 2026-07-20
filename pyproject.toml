@@ -12,6 +12,7 @@ dependencies = [
     "pydantic",
     "PyYAML",
     "python-dotenv",
+    "streamlit",
 ]
 
 [tool.setuptools]

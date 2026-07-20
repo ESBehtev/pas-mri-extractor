@@ -56,6 +56,84 @@ Rule-only fallback for local deterministic checks:
 PYTHONPATH=src python scripts/run_single.py --use-rules --text "MRI report text"
 ```
 
+## Docker
+
+The Compose stack has two containers: Streamlit `app` and an OpenAI-compatible
+local `vllm` server. They communicate on the private Compose network; vLLM is
+not exposed on a host port.
+
+Create the local runtime configuration once:
+
+```bash
+cp .env.example .env
+# Set HF_TOKEN if the selected Hugging Face model needs it.
+```
+
+Start the stack:
+
+```bash
+docker compose up -d --build
+docker compose ps
+curl -f http://localhost:8501/_stcore/health
+```
+
+The first vLLM start downloads the configured model into the named
+`huggingface-cache` volume, so its healthcheck can take several minutes. Open
+http://localhost:8501 only after both services are healthy.
+
+Switch the local model with one `.env` line, for example:
+
+```bash
+VLLM_MODEL=Qwen/Qwen3-14B
+```
+
+The same change works for a compatible Llama or Mistral Hugging Face model;
+then restart the stack:
+
+```bash
+docker compose up -d --force-recreate vllm app
+```
+
+No Python code changes are needed: `PAS_MODEL=${VLLM_MODEL}` selects the API
+model name, while `PAS_API_BASE_URL=http://vllm:8000/v1` routes requests to the
+local server. To use another OpenAI-compatible server, set
+`PAS_API_BASE_URL` and `PAS_MODEL` directly in `.env`.
+
+Update containers:
+
+```bash
+docker compose pull
+docker compose up -d --build
+```
+
+Clear downloaded Hugging Face models only when the stack is stopped:
+
+```bash
+docker compose down
+docker volume rm pas-mri-extractor_huggingface-cache
+```
+
+Stop the local service without deleting model cache:
+
+```bash
+docker compose down
+```
+
+Publish only after authenticating to Docker Hub:
+
+```bash
+docker tag pas-mri-extractor:local <dockerhub_username>/pas-mri-extractor:latest
+docker push <dockerhub_username>/pas-mri-extractor:latest
+```
+
+On the server, place `.env` next to `compose.yaml`, then pull and run:
+
+```bash
+docker pull <dockerhub_username>/pas-mri-extractor:latest
+DOCKER_IMAGE=<dockerhub_username>/pas-mri-extractor:latest docker compose up -d
+docker compose ps
+```
+
 ## Tests
 
 ```bash

@@ -2,10 +2,4 @@ pydantic
 pyyaml
 python-dotenv
 openai
-
-pandas
-openpyxl
-jupyter
-notebook
-ipykernel
 streamlit
