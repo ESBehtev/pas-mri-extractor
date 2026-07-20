@@ -7,6 +7,12 @@ name = "pas-mri-extractor"
 version = "0.1.0"
 description = "MRI PAS feature extraction"
 requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.0.0",
+    "pydantic",
+    "PyYAML",
+    "python-dotenv",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

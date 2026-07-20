@@ -219,6 +219,27 @@ tempCodeRunnerFile.py
 # Project runtime config overrides
 runtime_configs/
 
+# Local clinical and generated artifacts, including their legacy archive
+data/
+outputs/
+models/
+reports/
+legacy/data/
+legacy/outputs/
+legacy/models/
+legacy/runtime_configs/
+*.xlsx
+*.xls
+
+# Production repository excludes archived and local research material
+legacy/
+notebooks/
+outputs/
+reports/
+data/
+**/__pycache__/
+*.pyc
+
 # Project data/model/eval artifacts
 data/
 data/raw*/

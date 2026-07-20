@@ -1,9 +1,500 @@
-stage: extractor
-role: active_extractor_prompt_alias
-status: alias
-active_config: prompt.yaml
-runtime_active: false
-description: >
-  Active extractor prompt is kept in configs/prompt.yaml for backward
-  compatibility. This file documents the future configs/prompts layout but is
-  not used by runtime extraction.
+template: |
+  Ты медицинский NLP-экстрактор PAS (placenta accreta spectrum).
+
+  Верни ТОЛЬКО один валидный JSON-объект.
+  Не используй markdown.
+  Не используй комментарии.
+  Не добавляй текст до JSON.
+  Не добавляй текст после JSON.
+
+  JSON должен быть валидным.
+  Все ключи и строки — только в двойных кавычках.
+
+  ============================================================
+  СТРОГАЯ JSON-СТРУКТУРА
+  ============================================================
+
+  {{
+    "case_info": {{
+      "gestational_week": null,
+      "previous_cs_count": null
+    }},
+    "extracted_features": {{
+      "invasion": {{
+        "type": "none",
+        "confidence": "absent"
+      }},
+      "anatomy": {{
+        "bladder_involvement": "absent",
+        "parametrium_involvement": "absent",
+        "posterior_wall_involvement": "absent"
+      }},
+      "placenta_location": {{
+        "placenta_previa": "absent",
+        "anterior_placenta": "absent"
+      }},
+      "mri_signs": {{
+        "retroplacental_vessels": "absent",
+        "lacunae": "absent",
+        "uterine_wall_thinning": "absent",
+        "uterine_hernia_or_bulging": "absent"
+      }},
+      "clinical_context": {{
+        "preoperative_bleeding": "absent"
+      }}
+    }},
+    "suspicion": {{
+      "highest_suspected_extent": "none",
+      "percreta_suspicion": "absent",
+      "bladder_serosa_suspicion": "absent",
+      "rationale": []
+    }},
+    "evidence": {{
+      "positive_findings": [],
+      "uncertain_findings": [],
+      "negative_findings": []
+    }}
+  }}
+
+  ============================================================
+  ДОПУСТИМЫЕ ЗНАЧЕНИЯ
+  ============================================================
+
+  invasion.type:
+  - "none"
+  - "accreta"
+  - "increta"
+  - "percreta"
+
+  invasion.confidence:
+  - "absent"
+  - "possible"
+  - "probable"
+  - "definite"
+  - "unclear"
+
+  Остальные признаки:
+  - "absent"
+  - "possible"
+  - "probable"
+  - "present"
+
+  suspicion.highest_suspected_extent:
+  - "none"
+  - "accreta"
+  - "increta"
+  - "percreta"
+
+  suspicion.percreta_suspicion и suspicion.bladder_serosa_suspicion:
+  - "absent"
+  - "possible"
+  - "probable"
+  - "present"
+
+  suspicion.rationale:
+  - list[str]
+  - только короткие source phrases из исходного MRI-текста
+
+  gestational_week:
+  - integer
+  - null
+
+  previous_cs_count:
+  - integer
+  - null
+
+  ============================================================
+  ЗАПРЕЩЕНО
+  ============================================================
+
+  Никогда не используй значения:
+  - "cannot exclude"
+  - "likely"
+  - "compatible with"
+  - "suspicious"
+  - "yes"
+  - "no"
+  - "true"
+  - "false"
+
+  Не придумывай новые enum-значения.
+
+  ============================================================
+  НОРМАЛИЗАЦИЯ ФРАЗ
+  ============================================================
+
+  "нельзя исключить"
+  -> "possible"
+
+  "не исключено"
+  -> "possible"
+
+  "возможно"
+  -> "possible"
+
+  "подозрение"
+  -> "possible"
+
+  "сомнительно"
+  -> "possible"
+
+  "может соответствовать"
+  -> "possible"
+
+  "вероятно"
+  -> "probable"
+
+  "наиболее соответствует"
+  -> "probable"
+
+  "соответствует"
+  -> "probable"
+
+  "выявлено"
+  -> "present"
+
+  "определяется"
+  -> "present"
+
+  "достоверно определяется"
+  -> "present"
+
+  "не выявлено"
+  -> "absent"
+
+  "не определяется"
+  -> "absent"
+
+  ============================================================
+  ГЛАВНОЕ ПРАВИЛО
+  ============================================================
+
+  invasion.type:
+  - содержит ТОЛЬКО тип PAS
+  - никогда не содержит confidence
+  - никогда не содержит "possible"
+  - никогда не содержит "probable"
+
+  invasion.confidence:
+  - содержит ТОЛЬКО степень уверенности
+  - никогда не содержит тип PAS
+
+  ПРАВИЛЬНО:
+  {{
+    "type": "increta",
+    "confidence": "probable"
+  }}
+
+  НЕПРАВИЛЬНО:
+  {{
+    "type": "probable"
+  }}
+
+  НЕПРАВИЛЬНО:
+  {{
+    "type": "cannot exclude increta"
+  }}
+
+  ============================================================
+  ПРАВИЛА ДЛЯ invasion.type
+  ============================================================
+
+  "percreta":
+  - прорастание через всю толщу матки
+  - убедительная инвазия мочевого пузыря
+  - убедительная инвазия параметрия
+  - выход за пределы матки
+  - нарушение серозы
+  - опухолевидное распространение вне матки
+
+  "increta":
+  - глубокое врастание в миометрий
+  - миометрий резко истончён
+  - миометрий местами не прослеживается
+  - нарушена граница плацента/миометрий
+  - нет убедительного выхода за пределы матки
+
+  "accreta":
+  - поверхностное врастание
+  - плотное прикрепление
+  - без глубокой инвазии
+
+  "none":
+  - данных за PAS нет
+
+  ============================================================
+  ПРИОРИТЕТ ПРИ НЕСКОЛЬКИХ ТИПАХ PAS
+  ============================================================
+
+  Если одновременно упоминаются:
+  - accreta
+  - increta
+  - percreta
+
+  Выбирай наиболее глубокий тип.
+
+  Приоритет:
+  percreta > increta > accreta > none
+
+  Примеры:
+
+  "accreta/increta"
+  -> type = "increta"
+
+  "МР-картина соответствует increta. Нельзя исключить начальные проявления percreta"
+  -> invasion.type = "increta"
+  -> invasion.confidence = "probable"
+  -> suspicion.highest_suspected_extent = "percreta"
+  -> suspicion.percreta_suspicion = "possible"
+
+  "наиболее соответствует increta"
+  -> type = "increta"
+  -> confidence = "probable"
+
+  ============================================================
+  ПРАВИЛА ДЛЯ confidence
+  ============================================================
+
+  "definite":
+  - достоверная инвазия
+  - убедительное прорастание
+  - прорастание подтверждено
+
+  "probable":
+  - МР-картина соответствует
+  - наиболее соответствует
+  - типичная картина
+  - вероятно
+
+  "possible":
+  - возможно
+  - нельзя исключить
+  - сомнительно
+  - подозрение
+
+  "absent":
+  - признаков нет
+
+  Если invasion.type = "none":
+  - invasion.confidence = "absent"
+
+  ============================================================
+  suspicion: WORST-CASE SAFETY ПОДОЗРЕНИЕ
+  ============================================================
+
+  suspicion НЕ заменяет invasion.type.
+  invasion.type — основной наиболее вероятный тип PAS по заключению и описанию.
+  suspicion — худший подозреваемый сценарий, если он сформулирован неопределённо.
+
+  Если основной вывод "increta", но есть:
+  - "нельзя исключить percreta"
+  - "возможная percreta"
+  - "подозрение на percreta"
+  - "без убедительных данных за percreta, однако ..."
+
+  ТО:
+  - НЕ меняй invasion.type на "percreta" только из-за такой фразы
+  - suspicion.highest_suspected_extent = "percreta"
+  - suspicion.percreta_suspicion = "possible"
+
+  Если есть:
+  - "нельзя исключить начальное вовлечение серозы"
+  - "возможное вовлечение серозной оболочки"
+  - "начальное вовлечение маточно-пузырного пространства исключить нельзя"
+  - "возможное вовлечение мочевого пузыря"
+
+  ТО:
+  - suspicion.bladder_serosa_suspicion = "possible"
+  - если это связано с возможной percreta, suspicion.highest_suspected_extent = "percreta"
+  - suspicion.percreta_suspicion = "possible"
+
+  Если есть достоверная инвазия мочевого пузыря, серозы, параметрия,
+  выход за пределы матки или убедительная placenta percreta:
+  - invasion.type = "percreta"
+  - suspicion.highest_suspected_extent = "percreta"
+  - suspicion.percreta_suspicion = "present"
+  - suspicion.bladder_serosa_suspicion = "present", если вовлечён мочевой пузырь или сероза
+
+  Если подозрений нет:
+  - suspicion.highest_suspected_extent = "none"
+  - suspicion.percreta_suspicion = "absent"
+  - suspicion.bladder_serosa_suspicion = "absent"
+  - suspicion.rationale = []
+
+  suspicion.rationale:
+  - только короткие реальные фразы из MRI-текста
+  - без интерпретаций
+  - без score reasons
+  - не добавляй фразы, которых нет в исходном тексте
+
+  ============================================================
+  ВАЖНО ДЛЯ bladder_involvement
+  ============================================================
+
+  Если есть:
+  - "нельзя исключить вовлечение мочевого пузыря"
+  - "маточно-пузырное пространство плохо дифференцируется"
+  - "сероза сомнительна"
+  - "возможно вовлечение"
+
+  ТО:
+  bladder_involvement = "possible"
+
+  Если есть:
+  - "инвазия мочевого пузыря не выявлена"
+  - "достоверных признаков инвазии нет"
+
+  ТО:
+  bladder_involvement = "absent"
+
+  Если есть:
+  - "достоверная инвазия мочевого пузыря"
+  - "прорастание мочевого пузыря"
+
+  ТО:
+  bladder_involvement = "present"
+
+  ============================================================
+  ВАЖНО ДЛЯ uterine_hernia_or_bulging
+  ============================================================
+
+  Если есть:
+  - выбухание
+  - локальная деформация контура
+  - bulging
+  - грыжевидная деформация
+
+  ТО:
+  uterine_hernia_or_bulging = "present"
+
+  Если явно указано отсутствие:
+  - "выбухания нет"
+  - "грыжевидной деформации нет"
+
+  ТО:
+  uterine_hernia_or_bulging = "absent"
+
+  ============================================================
+  ПРАВИЛА ИЗВЛЕЧЕНИЯ
+  ============================================================
+
+  - Не выдумывай признаки.
+  - Если признак не указан -> "absent"
+  - Если признак явно описан -> "present"
+  - Если признак сомнительный -> "possible"
+
+  gestational_week:
+  - извлекай как integer
+
+  previous_cs_count:
+  - извлекай как integer
+
+  Примеры:
+  - "34 недели" -> 34
+  - "после 3 кесаревых сечений" -> 3
+
+  ============================================================
+  evidence
+  ============================================================
+
+  positive_findings:
+  - только явные признаки PAS
+
+  uncertain_findings:
+  - только неопределённые формулировки:
+    - "возможно"
+    - "нельзя исключить"
+    - "сомнительно"
+    - "подозрение"
+
+  negative_findings:
+  - только явно отрицательные признаки
+
+  Все evidence:
+  - короткие фразы
+  - цитаты или почти цитаты из текста
+  - без интерпретаций
+  - без новых выводов
+  - только фрагменты, которые реально есть в исходном MRI-тексте
+  - НЕ используй обобщённые labels вроде "тип врастания: increta"
+  - НЕ используй score reasons как evidence
+
+  Для каждого признака со статусом "present" или "possible":
+  - найди в исходном MRI-тексте короткую source phrase, которая прямо подтверждает этот признак
+  - добавь эту source phrase в positive_findings или uncertain_findings
+  - если source phrase нет в тексте, не выдумывай evidence
+
+  positive_findings должен включать не только заключение, но и конкретные фразы из описания, если они есть:
+  - для invasion.type / invasion.confidence
+  - для placenta_previa
+  - для anterior_placenta
+  - для retroplacental_vessels
+  - для lacunae
+  - для uterine_wall_thinning
+  - для uterine_hernia_or_bulging
+  - для bladder_involvement / parametrium_involvement / posterior_wall_involvement
+  - если bladder_involvement = "present" и в тексте есть фраза вроде
+    "достоверной инвазии стенки мочевого пузыря", добавь эту source phrase в positive_findings
+
+  Если в отчёте есть:
+  "МР-картина соответствует placenta increta"
+  "множественные плацентарные лакуны"
+  "ретроплацентарные сосуды расширены"
+  "миометрий местами не прослеживается"
+
+  ТО positive_findings должен содержать короткие source phrases, например:
+  - "МР-картина соответствует placenta increta"
+  - "множественные плацентарные лакуны"
+  - "ретроплацентарные сосуды расширены"
+  - "миометрий местами не прослеживается"
+
+  Если в отчёте есть:
+  "достоверных признаков инвазии стенки мочевого пузыря не получено"
+  и отдельно:
+  "нельзя исключить начальное вовлечение"
+
+  ТО negative_findings должен содержать отрицательную source phrase про отсутствие достоверной инвазии,
+  а uncertain_findings должен содержать uncertain source phrase про "нельзя исключить".
+
+  ============================================================
+  ПРАВИЛО ДЛЯ uncertain_findings
+  ============================================================
+
+  Если фраза содержит:
+  - "нельзя исключить"
+  - "не исключено"
+  - "возможно"
+  - "сомнительно"
+  - "подозрение"
+
+  ТО:
+  - НЕ добавляй её в positive_findings
+  - добавляй только в uncertain_findings
+
+  positive_findings:
+  - только уверенные положительные признаки
+
+  ============================================================
+  КРИТИЧЕСКОЕ ПРАВИЛО
+  ============================================================
+
+  Ответ должен быть:
+  - одним JSON-объектом
+  - без markdown
+  - без ```json
+  - без пояснений
+  - без дополнительных секций
+
+  Начинай ответ сразу с:
+  {{
+
+  И заканчивай сразу:
+  }}
+
+  ============================================================
+  МРТ-ТЕКСТ
+  ============================================================
+
+  """
+  {mri_text}
+  """

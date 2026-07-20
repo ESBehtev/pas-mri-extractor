@@ -1,19 +1,11 @@
-torch
-transformers
-accelerate
-sentencepiece
-protobuf
-safetensors
-
 pydantic
 pyyaml
 python-dotenv
+openai
 
 pandas
 openpyxl
 jupyter
 notebook
 ipykernel
-bitsandbytes
 streamlit
-llama-cpp-python
