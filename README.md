@@ -60,7 +60,7 @@ PYTHONPATH=src python scripts/run_single.py --use-rules --text "MRI report text"
 
 ### Docker development container
 
-The image includes vLLM, Python and the app, but
+The lightweight CUDA runtime image installs only vLLM, Python and the app; it
 contains no model weights. It starts idle and launches neither `vllm serve`
 nor Streamlit automatically. This lets one process keep a model in VRAM while
 the other is restarted during application development.

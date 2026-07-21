@@ -1,10 +1,12 @@
-# vLLM provides the CUDA runtime and OpenAI-compatible server implementation.
-FROM --platform=linux/amd64 vllm/vllm-openai:latest
+# CUDA runtime only: vLLM and the application are installed from Python wheels.
+FROM --platform=linux/amd64 nvidia/cuda:12.6.3-runtime-ubuntu24.04
 
-WORKDIR /workspace
+ARG DEBIAN_FRONTEND=noninteractive
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     VIRTUAL_ENV=/opt/venv \
     PATH=/opt/venv/bin:$PATH \
     HF_HOME=/data/huggingface \
@@ -16,16 +18,25 @@ ENV PYTHONUNBUFFERED=1 \
     GPU_MEMORY_UTILIZATION=0.9
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash ca-certificates curl git python3-venv \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        ca-certificates \
+        git \
+        libgomp1 \
+        python3 \
+        python3-pip \
+        python3-venv \
     && python3 -m venv "$VIRTUAL_ENV" \
     && rm -rf /var/lib/apt/lists/*
 
-# Install application dependencies before application code to maximize layer reuse.
-COPY requirements.txt pyproject.toml README.md /opt/pas-mri-extractor/
+# Keep the large vLLM/Python dependency layer reusable while application code changes.
+COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r /opt/pas-mri-extractor/requirements.txt
+    && pip install --no-cache-dir vllm -r /tmp/requirements.txt \
+    && rm -f /tmp/requirements.txt
 
 # Backup only; editable application code may be cloned manually into /workspace.
+COPY pyproject.toml /opt/pas-mri-extractor/pyproject.toml
 COPY src /opt/pas-mri-extractor/src
 COPY app /opt/pas-mri-extractor/app
 COPY configs /opt/pas-mri-extractor/configs
@@ -39,6 +50,7 @@ RUN pip install --no-cache-dir --no-deps /opt/pas-mri-extractor \
     && chmod +x /workspace/start_vllm.sh \
     && chown -R appuser:appuser /workspace /models /data /opt/pas-mri-extractor
 
+WORKDIR /workspace
 USER appuser
 
 EXPOSE 8000 8501
