@@ -60,8 +60,8 @@ PYTHONPATH=src python scripts/run_single.py --use-rules --text "MRI report text"
 
 ### Docker development container
 
-The image includes the CUDA build of `llama-server`, Python and the app, but
-contains no model weights. It starts idle and launches neither `llama-server`
+The image includes vLLM, Python and the app, but
+contains no model weights. It starts idle and launches neither `vllm serve`
 nor Streamlit automatically. This lets one process keep a model in VRAM while
 the other is restarted during application development.
 
@@ -71,7 +71,7 @@ cp .env.example .env
 
 docker buildx build --platform linux/amd64 \
   -t pas-mri-extractor:cuda-dev --load .
-docker run -d --name pas-mri-dev --gpus all -p 8501:8501 --env-file .env \
+docker run -d --name pas-mri-dev --gpus all -p 8000:8000 -p 8501:8501 --env-file .env \
   pas-mri-extractor:cuda-dev
 ```
 
@@ -86,28 +86,31 @@ Clone the editable working copy once inside the container; the image copy in
 
 ```bash
 git clone <github_repository_url> /workspace/pas-mri-extractor
-cd /workspace/pas-mri-extractor
 ```
 
-In the first terminal, start the model manually and leave it running:
+In the first terminal, start vLLM manually and leave it running:
 
 ```bash
-llama-server -m /models/your-model.gguf --host 127.0.0.1 --port 8080 \
-  --api-key local-token -ngl 999
+cd /workspace
+./start_vllm.sh
 ```
 
 In the second terminal, start or restart only Streamlit after editing code:
 
 ```bash
+cd /workspace/pas-mri-extractor
 PYTHONPATH=src streamlit run app/streamlit_app.py \
   --server.address=0.0.0.0 --server.port=8501
 ```
 
-Mount a host directory with GGUF files when starting the container, for example:
+Mount a host directory with a Hugging Face model when starting the container,
+for example (AWQ/GPTQ model directories are supported by vLLM):
 
 ```bash
-docker run -d --name pas-mri-dev --gpus all -p 8501:8501 \
-  --env-file .env -v /host/models:/models:ro pas-mri-extractor:cuda-dev
+docker run -d --name pas-mri-dev --gpus all -p 8000:8000 -p 8501:8501 \
+  --env-file .env \
+  -v /host/models/cyankiwi-Qwen3.6-27B-AWQ-INT4:/models:ro \
+  pas-mri-extractor:cuda-dev
 ```
 
 The existing Compose file uses the same idle container and `.env`; it requires
