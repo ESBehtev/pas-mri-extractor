@@ -37,12 +37,27 @@ class ModelConfigTest(unittest.TestCase):
         self.assertEqual(config.max_tokens, 1024)
 
     def test_missing_api_key_has_clear_error(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(
+            os.environ,
+            {
+                "PAS_API_BASE_URL": "http://api.example/v1",
+                "PAS_MODEL": "test-model",
+            },
+            clear=True,
+        ):
             with self.assertRaisesRegex(ModelConfigError, "PAS_API_KEY"):
                 resolve_llm_config()
 
     def test_dry_run_never_returns_api_key(self) -> None:
-        with patch.dict(os.environ, {"PAS_API_KEY": "secret-value"}, clear=True):
+        with patch.dict(
+            os.environ,
+            {
+                "PAS_API_KEY": "secret-value",
+                "PAS_API_BASE_URL": "http://api.example/v1",
+                "PAS_MODEL": "test-model",
+            },
+            clear=True,
+        ):
             dry_run = dry_run_model_config()
 
         self.assertEqual(dry_run["provider"], "openai_compatible")

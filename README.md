@@ -56,68 +56,70 @@ Rule-only fallback for local deterministic checks:
 PYTHONPATH=src python scripts/run_single.py --use-rules --text "MRI report text"
 ```
 
-## Docker
+## Deployment
 
-The Compose stack has two containers: Streamlit `app` and an OpenAI-compatible
-local `vllm` server. They communicate on the private Compose network; vLLM is
-not exposed on a host port.
+### Docker development container
 
-Create the local runtime configuration once:
+The image includes the CUDA build of `llama-server`, Python and the app, but
+contains no model weights. It starts idle and launches neither `llama-server`
+nor Streamlit automatically. This lets one process keep a model in VRAM while
+the other is restarted during application development.
 
 ```bash
 cp .env.example .env
-# Set HF_TOKEN if the selected Hugging Face model needs it.
+# Set PAS_API_BASE_URL, PAS_API_KEY and PAS_MODEL for your provider.
+
+docker build -t pas-mri-extractor:local .
+docker run -d --name pas-mri-dev --gpus all -p 8501:8501 --env-file .env \
+  pas-mri-extractor:local
 ```
 
-Start the stack:
+Enter the running container in two terminals:
+
+```bash
+docker exec -it pas-mri-dev bash
+```
+
+In the first terminal, start the model manually and leave it running:
+
+```bash
+llama-server -m /models/your-model.gguf --host 127.0.0.1 --port 8080 \
+  --api-key local-token -ngl 999
+```
+
+In the second terminal, start or restart only Streamlit after editing code:
+
+```bash
+streamlit run app/streamlit_app.py --server.address=0.0.0.0 --server.port=8501
+```
+
+Mount a host directory with GGUF files when starting the container, for example:
+
+```bash
+docker run -d --name pas-mri-dev --gpus all -p 8501:8501 \
+  --env-file .env -v /host/models:/models:ro pas-mri-extractor:local
+```
+
+The existing Compose file uses the same idle container and `.env`; it requires
+an NVIDIA-capable Docker host:
 
 ```bash
 docker compose up -d --build
-docker compose ps
-curl -f http://localhost:8501/_stcore/health
+docker compose exec app bash
 ```
 
-The first vLLM start downloads the configured model into the named
-`huggingface-cache` volume, so its healthcheck can take several minutes. Open
-http://localhost:8501 only after both services are healthy.
+### External OpenAI-compatible API
 
-Switch the local model with one `.env` line, for example:
+The application supports OpenAI, separately deployed vLLM, LM Studio,
+Ollama's OpenAI-compatible API, and any endpoint compatible with OpenAI Chat
+Completions. For an external vLLM deployment, change only this line in `.env`:
 
-```bash
-VLLM_MODEL=Qwen/Qwen3-14B
+```dotenv
+PAS_API_BASE_URL=http://your-vllm-host:8000/v1
 ```
 
-The same change works for a compatible Llama or Mistral Hugging Face model;
-then restart the stack:
-
-```bash
-docker compose up -d --force-recreate vllm app
-```
-
-No Python code changes are needed: `PAS_MODEL=${VLLM_MODEL}` selects the API
-model name, while `PAS_API_BASE_URL=http://vllm:8000/v1` routes requests to the
-local server. To use another OpenAI-compatible server, set
-`PAS_API_BASE_URL` and `PAS_MODEL` directly in `.env`.
-
-Update containers:
-
-```bash
-docker compose pull
-docker compose up -d --build
-```
-
-Clear downloaded Hugging Face models only when the stack is stopped:
-
-```bash
-docker compose down
-docker volume rm pas-mri-extractor_huggingface-cache
-```
-
-Stop the local service without deleting model cache:
-
-```bash
-docker compose down
-```
+Set `PAS_MODEL` to the model name served by that endpoint. Switching Qwen,
+Llama or Mistral requires no image rebuild and no Python-code change.
 
 Publish only after authenticating to Docker Hub:
 

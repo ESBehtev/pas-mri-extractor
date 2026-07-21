@@ -3,9 +3,9 @@ default_model: openai_compatible
 models:
   openai_compatible:
     display_name: OpenAI-compatible API
-    base_url: https://api.openai.com/v1
+    base_url: ""
     api_key_env: PAS_API_KEY
-    model: gpt-4.1-mini
+    model: ""
     timeout: 60
     generation:
       temperature: 0.0
