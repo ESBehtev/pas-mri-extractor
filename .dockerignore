@@ -14,9 +14,13 @@ dist
 .DS_Store
 *.xlsx
 *.xls
+*.gguf
+*.safetensors
+*.bin
 .env
 .env.*
 !.env.example
+.streamlit/secrets.toml
 runtime_configs
 models
 .cache

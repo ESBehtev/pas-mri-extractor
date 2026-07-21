@@ -69,15 +69,24 @@ the other is restarted during application development.
 cp .env.example .env
 # Set PAS_API_BASE_URL, PAS_API_KEY and PAS_MODEL for your provider.
 
-docker build -t pas-mri-extractor:local .
+docker buildx build --platform linux/amd64 \
+  -t pas-mri-extractor:cuda-dev --load .
 docker run -d --name pas-mri-dev --gpus all -p 8501:8501 --env-file .env \
-  pas-mri-extractor:local
+  pas-mri-extractor:cuda-dev
 ```
 
 Enter the running container in two terminals:
 
 ```bash
 docker exec -it pas-mri-dev bash
+```
+
+Clone the editable working copy once inside the container; the image copy in
+`/opt/pas-mri-extractor` is only a fallback:
+
+```bash
+git clone <github_repository_url> /workspace/pas-mri-extractor
+cd /workspace/pas-mri-extractor
 ```
 
 In the first terminal, start the model manually and leave it running:
@@ -90,14 +99,15 @@ llama-server -m /models/your-model.gguf --host 127.0.0.1 --port 8080 \
 In the second terminal, start or restart only Streamlit after editing code:
 
 ```bash
-streamlit run app/streamlit_app.py --server.address=0.0.0.0 --server.port=8501
+PYTHONPATH=src streamlit run app/streamlit_app.py \
+  --server.address=0.0.0.0 --server.port=8501
 ```
 
 Mount a host directory with GGUF files when starting the container, for example:
 
 ```bash
 docker run -d --name pas-mri-dev --gpus all -p 8501:8501 \
-  --env-file .env -v /host/models:/models:ro pas-mri-extractor:local
+  --env-file .env -v /host/models:/models:ro pas-mri-extractor:cuda-dev
 ```
 
 The existing Compose file uses the same idle container and `.env`; it requires
